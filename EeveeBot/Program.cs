@@ -101,7 +101,7 @@ namespace EeveeBot
                 var context = new SocketCommandContext(_dClient, userMsg);
                 var result = await _cmdService.ExecuteAsync(context, paramPos, _serviceProvider);
                 if (!result.IsSuccess)
-                    Console.WriteLine(result.ErrorReason);
+                    await Log(result.ErrorReason, result.IsSuccess);
             }
 
         }
@@ -118,9 +118,45 @@ namespace EeveeBot
                 .BuildServiceProvider();
         }
 
+        private void HandleLogSeverity(LogSeverity severity)
+        {
+            switch (severity)
+            {
+                case LogSeverity.Critical:
+                    Console.ForegroundColor = ConsoleColor.Blue;
+                    break;
+                case LogSeverity.Error:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    break;
+                case LogSeverity.Warning:
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    break;
+                case LogSeverity.Info:
+                    Console.ForegroundColor = ConsoleColor.White;
+                    break;
+                case LogSeverity.Verbose:
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    break;
+                case LogSeverity.Debug:
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    break;
+                default:
+                    break;
+            }
+        }
+
         private Task Log(LogMessage msg)
         {
-            Console.WriteLine(msg.ToString());
+            HandleLogSeverity(msg.Severity);
+            Console.WriteLine($"{DateTime.Now.ToString(), 9}    [{msg.Severity}] => {msg.Source} : {msg.Message}");
+            return Task.CompletedTask;
+        }
+
+        private Task Log(string msg, bool succeeded)
+        {
+            LogSeverity severity = succeeded ? LogSeverity.Info : LogSeverity.Error;
+            HandleLogSeverity(severity);
+            Console.WriteLine($"{DateTime.Now.ToString(),9}    [{severity}] => Commands : {msg}");
             return Task.CompletedTask;
         }
     }
