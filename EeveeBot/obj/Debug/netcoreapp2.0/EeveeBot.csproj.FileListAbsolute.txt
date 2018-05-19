@@ -39,4 +39,4 @@ C:\~Sync~\Project Repositories\Discord-Bots\EeveeBot\bin\Debug\netcoreapp2.0\Eev
 C:\~Sync~\Project Repositories\Discord-Bots\EeveeBot\bin\Debug\netcoreapp2.0\EeveeBot.runtimeconfig.dev.json
 C:\~Sync~\Project Repositories\Discord-Bots\EeveeBot\bin\Debug\netcoreapp2.0\EeveeBot.dll
 C:\~Sync~\Project Repositories\Discord-Bots\EeveeBot\bin\Debug\netcoreapp2.0\EeveeBot.pdb
-C:\~Sync~\Project Repositories\Discord-Bots\EeveeBot\bin\Debug\netcoreapp2.0\Eevee.db
+C:\~Sync~\Project Repositories\Discord-Bots\EeveeBot\bin\Debug\netcoreapp2.0\config.json

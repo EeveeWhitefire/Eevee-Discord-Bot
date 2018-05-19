@@ -27,6 +27,8 @@ namespace EeveeBot
 
         private IServiceProvider _serviceProvider;
 
+        public static ConsoleColor defColor = ConsoleColor.White;
+
         private Config_Json _config;
         private JsonManager_Service _jsonMngr;
 
@@ -51,6 +53,8 @@ namespace EeveeBot
 
         private async Task StartBotAsync()
         {
+            Console.WriteLine(string.Empty); //for logging visual purposes
+
             #region Discord Client Initialization
             _config = await _jsonMngr.GetJsonObjectAsync<Config_Json>();
             _db = new DatabaseContext(_config);
@@ -118,7 +122,7 @@ namespace EeveeBot
                 .BuildServiceProvider();
         }
 
-        private void HandleLogSeverity(LogSeverity severity)
+        public static void HandleLogSeverity(LogSeverity severity)
         {
             switch (severity)
             {
@@ -145,18 +149,33 @@ namespace EeveeBot
             }
         }
 
+        private const string _dateTimeFormat = "MM/dd/yyyy hh:mm:ss.fff tt";
+
+        private static string BuildLogMessage(string severity, string src, string msg)
+        {
+            string dateTime = DateTime.Now.ToString(_dateTimeFormat);
+
+            return $"{string.Empty,2}[{dateTime}]    [{severity,-8}] => {src,-8} : {msg}";
+        }
+
         private Task Log(LogMessage msg)
         {
             HandleLogSeverity(msg.Severity);
-            Console.WriteLine($"{DateTime.Now.ToString(), 9}    [{msg.Severity}] => {msg.Source} : {msg.Message}");
+
+            Console.WriteLine(BuildLogMessage(msg.Severity.ToString(), msg.Source, msg.Message));
+
+            Console.ForegroundColor = defColor;
             return Task.CompletedTask;
         }
 
-        private Task Log(string msg, bool succeeded)
+        public static Task Log(string msg, bool succeeded)
         {
             LogSeverity severity = succeeded ? LogSeverity.Info : LogSeverity.Error;
             HandleLogSeverity(severity);
-            Console.WriteLine($"{DateTime.Now.ToString(),9}    [{severity}] => Commands : {msg}");
+
+            Console.WriteLine(BuildLogMessage(severity.ToString(), "Commands", msg));
+
+            Console.ForegroundColor = defColor;
             return Task.CompletedTask;
         }
     }

@@ -10,7 +10,7 @@ namespace EeveeBot.Classes.Database
 {
     public class DatabaseContext : LiteDatabase
     {
-        public DatabaseContext(Config_Json _cnfg) : base($"{_cnfg.Bot_Name.Trim(' ')}.db")
+        public DatabaseContext(Config_Json _cnfg) : base($"{_cnfg.Project_Path}\\{_cnfg.Bot_Name.Trim(' ')}.db")
         {
             GetCollection<Db_Emote>("emotes");
             GetCollection<Db_WhitelistUser>("whitelist");

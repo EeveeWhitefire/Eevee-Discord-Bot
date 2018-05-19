@@ -6,6 +6,7 @@ using System.Linq;
 using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
+using System.Reflection;
 
 using Discord;
 using Discord.Commands;
@@ -16,7 +17,7 @@ using ImageSharp;
 using EeveeBot.Classes.Database;
 using EeveeBot.Classes.Json;
 using EeveeBot.Classes.Services;
-using System.Reflection;
+using EeveeBot.Interfaces;
 
 namespace EeveeBot.Modules
 {
@@ -73,8 +74,12 @@ namespace EeveeBot.Modules
         private Random _rnd;
         private JsonManager_Service _jsonMngr;
         private Config_Json _config;
-        private const int NicknameCountMax = 2;
-        private const int NicknameLengthMin = 2;
+
+        private const int NICKNAME_COUNT_MAX = 2;
+        private const int NICKNAME_LENGTH_MIN = 2;
+        private const int EMOTE_RESOLUTION_SIZE = 36;
+
+        private static IDictionary<ulong, string> _emotesYetToBeLoaded = new Dictionary<ulong, string>();
 
         public EmoteCommands(DatabaseContext db, Random rnd, JsonManager_Service jsonM, Config_Json cnfg)
         {
@@ -103,9 +108,9 @@ namespace EeveeBot.Modules
 
                 if (inNick != null && !definitions.Select(x => x.Nickname.ToLower()).Contains(inNick.ToLower()))
                 {
-                    if (inNick.Length < NicknameLengthMin)
+                    if (inNick.Length < NICKNAME_LENGTH_MIN)
                     {
-                        await ReplyAsync($"Error : A nickname must be at least {NicknameLengthMin} chars long!");
+                        await ReplyAsync($"Error : A nickname must be at least {NICKNAME_LENGTH_MIN} chars long!");
                     }
                     else
                     {
@@ -117,12 +122,8 @@ namespace EeveeBot.Modules
                         });
                     }
                 }
-                using (WebClient webC = new WebClient())
-                {
-                    string fileName = $"Emotes\\{nEmote.Id}{(em.Animated ? ".gif" : ".png")}";
-                    if (!File.Exists($"Emotes\\{nEmote.Id}{(em.Animated ? ".gif" : ".png")}"))
-                        webC.DownloadFileAsync(new Uri(em.Url), fileName);
-                }
+
+                await DownloadEmote(em.Id, em.Url, em.Animated);
 
                 _db.GetCollection<Db_Emote>("emotes").Insert(nEmote.EncapsulateToDb());
 
@@ -131,6 +132,36 @@ namespace EeveeBot.Modules
 
                 await ReplyAsync(embed: _eBuilder.Build());
             }
+        }
+
+        private Task DownloadEmote(ulong id, string url, bool isAnimated = false)
+        {
+            using (WebClient webC = new WebClient())
+            {
+                string path = GetEmotePath(id, isAnimated);
+                if (!File.Exists(path))
+                {
+                    webC.DownloadFileAsync(new Uri(url), path);
+                    _emotesYetToBeLoaded.Add(id, path); //will be loaded at next run
+                }
+            }
+            return Task.CompletedTask;
+        }
+
+        private string GetEmotePath(ulong id, bool isAnimated)
+        {
+            string dir = $"{_config.Project_Path}\\Emotes";
+            if (!Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            string fileName = $"{dir}\\{id}{(isAnimated ? ".gif" : ".png")}";
+
+            return fileName;
+        }
+        private async Task EnsureEmoteExistsOnMachine(IEeveeEmote em)
+        {
+            if (!File.Exists(GetEmotePath(em.Id, em.IsAnimated)))
+                await DownloadEmote(em.Id, em.Url, em.IsAnimated);
         }
 
         [Command("add")]
@@ -161,6 +192,7 @@ namespace EeveeBot.Modules
                 if (em != null)
                 {
                     await AddEmoteToDatabase(em, nick);
+
                 }
                 else
                     await ReplyAsync($"Error! Emote associated with the ID {emoteId} wasn't found!");
@@ -171,22 +203,33 @@ namespace EeveeBot.Modules
             }
         }
         
-
         private async Task ResizeEmoteAndSendAsync(Db_Emote emote)
         {
-            int size = 36;
-            var assembly = Assembly.GetExecutingAssembly();
-            FileInfo fInfo = new FileInfo(Directory.GetCurrentDirectory() + "\\" + emote.RelativePath);
-            Stream resource = assembly.GetManifestResourceStream($"EeveeBot.Emotes.{fInfo.Name}");
+            int size = EMOTE_RESOLUTION_SIZE;
+            string emPath = Directory.GetCurrentDirectory() + "\\" + emote.RelativePath;
+            Stream resource;
+            Image<Rgba32> img;
+            string fileName = emote.Id + $".{(emote.IsAnimated ? "gif" : "png")}";
 
-            Image<Rgba32> img = ImageSharp.Image.Load(resource);
-            resource.Dispose();
+            if (_emotesYetToBeLoaded.Keys.Contains(emote.Id))
+            {
+                img = ImageSharp.Image.Load(_emotesYetToBeLoaded.FirstOrDefault( x => x.Key == emote.Id).Value);
+            }
+            else
+            {
+                var assembly = Assembly.GetExecutingAssembly();
+
+                resource = assembly.GetManifestResourceStream($"EeveeBot.Emotes.{fileName}");
+                img = ImageSharp.Image.Load(resource);
+                resource.Dispose();
+            }
+
 
             int width = img.Width, height = img.Height;
 
             if(height > width)
             {
-                size = size > height ? height : size;
+                size = size > height ? height : EMOTE_RESOLUTION_SIZE;
 
                 width = Convert.ToInt16(width * (double)(size / height));
                 height = size;
@@ -201,14 +244,15 @@ namespace EeveeBot.Modules
             if(!Directory.Exists("Temp"))
                 Directory.CreateDirectory("Temp");
 
-            string newPath = $"Temp\\{width}x{height}-{fInfo.Name}";
+            string newPath = $"Temp\\{width}x{height}-{fileName}";
 
             if (!File.Exists(newPath))
             {
                 using (_ = File.Create(newPath))
                 { }
-                img = img.Resize(width, height);
-                img.Save(newPath);
+                var resizedImg = img.Resize(width, height);
+                resizedImg.Save(newPath);
+                resizedImg.Dispose();
             }
             img.Dispose();
 
@@ -226,15 +270,17 @@ namespace EeveeBot.Modules
             var definitions = emotes.SelectMany(x => x.Nicknames).Where(x => x.OwnerId == Context.User.Id);
             var emote = emotes
                 .FirstOrDefault(x => x.Name.Replace(" ", string.Empty).ToLower() == name.ToLower() || x.Nicknames.Count(y => y.Nickname.Replace(" ", string.Empty).ToLower() == name.ToLower()) > 0);
+
             if(emote != null)
             {
                 try
                 {
+                    await EnsureEmoteExistsOnMachine(emote);
                     await ResizeEmoteAndSendAsync(emote);
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine(e);
+                    await Program.Log(e.ToString(), false);
                 }
             }
             else
@@ -290,9 +336,9 @@ namespace EeveeBot.Modules
             var definitions = emotes.SelectMany(x => x.Nicknames).Where(x => x.OwnerId == Context.User.Id);
             var emote = emotes.FirstOrDefault(x => x.Name.ToLower() == name.ToLower());
 
-            if (nick.Length < NicknameLengthMin)
+            if (nick.Length < NICKNAME_LENGTH_MIN)
             {
-                await ReplyAsync($"Error : A nickname must be at least {NicknameLengthMin} chars long!");
+                await ReplyAsync($"Error : A nickname must be at least {NICKNAME_LENGTH_MIN} chars long!");
             }
             else
             {
@@ -302,7 +348,7 @@ namespace EeveeBot.Modules
                     if (emotes.Select(x => x.Name).Count(x => x.ToLower() == nick.ToLower()) < 1
                         && !definitions.Select(x => x.Nickname.ToLower()).Contains(nick.ToLower()))
                     {
-                        if (emote.Nicknames.Count(x => x.OwnerId == Context.User.Id) > NicknameCountMax)
+                        if (emote.Nicknames.Count(x => x.OwnerId == Context.User.Id) > NICKNAME_COUNT_MAX)
                         {
                             await ReplyAsync("Error : You have exceeded the Nicknames capacity limit for this emote!" +
                                 $"\nIf you'd really like to add this one, please use {_config.Prefixes[0] }emotes delnick <nick> on " +
@@ -367,6 +413,11 @@ namespace EeveeBot.Modules
         {
             nick = nick.Replace(":", string.Empty);
 
+            if (nick.StartsWith('\"'))
+                nick = new string(nick.Skip(1).ToArray());
+            if (nick.EndsWith('\"'))
+                nick = new string(nick.Take(nick.Length - 1).ToArray());
+
             var emotes = _db.GetCollection<Db_Emote>("emotes").FindAll();
             var definition = emotes.SelectMany(x => x.Nicknames).Where(x => x.OwnerId == Context.User.Id)
                 .FirstOrDefault( x => x.Nickname.ToLower() == nick.ToLower());
@@ -379,6 +430,8 @@ namespace EeveeBot.Modules
                 _db.GetCollection<Db_Emote>("emotes").Update(emote);
                 await ReplyAsync("Success");
             }
+            else
+                await ReplyAsync($"Error! A nickname by the name of {nick} wasn't found!");
         }
 
         [Command("list")]
@@ -389,7 +442,7 @@ namespace EeveeBot.Modules
             var emotes = _db.GetCollection<Db_Emote>("emotes").FindAll().OrderByDescending(x => string.Join("", x.Nicknames).Length)
                 .OrderByDescending(x => x.IsAnimated);
             int NumOfEmotes = emotes.Count();
-            int NumOfPages = NumOfEmotes / MaxEmotesPerPage + (NumOfEmotes % MaxEmotesPerPage);
+            int NumOfPages = NumOfEmotes / MaxEmotesPerPage + (NumOfEmotes % MaxEmotesPerPage != 0 ? 1 : 0);
             string text = string.Empty;
 
             if (page < 1 || page > NumOfPages)

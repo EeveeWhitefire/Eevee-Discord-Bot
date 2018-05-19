@@ -61,9 +61,27 @@ namespace EeveeBot.Modules
 
         [Command("say")]
         [Alias("send")]
+        public async Task SendText(SocketTextChannel channel, [Remainder] string text)
+        {
+            await channel.SendMessageAsync(text);
+        }
+        [Command("say")]
         public async Task SendText([Remainder] string text)
         {
             await ReplyAsync(text);
+        }
+
+
+        [Command("mcavatar")]
+        public async Task SendMinecraftSkin(string username)
+        {
+            string url = $@"https://visage.surgeplay.com/full/512/{username}";
+            _eBuilder.WithTitle($"{username}'s Avatar:")
+                .WithUrl(url)
+                .WithImageUrl(url);
+            
+
+            await ReplyAsync("", embed: _eBuilder.Build());
         }
     }
 }

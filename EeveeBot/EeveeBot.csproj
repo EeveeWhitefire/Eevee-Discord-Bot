@@ -16,11 +16,15 @@
     <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic" Version="2.6.1" />
     <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
     <EmbeddedResource Include="Emotes\*.png" />
+    <EmbeddedResource Include="Emotes\*.gif" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="Eevee.db">
+    <None Update="config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Eevee.db">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 

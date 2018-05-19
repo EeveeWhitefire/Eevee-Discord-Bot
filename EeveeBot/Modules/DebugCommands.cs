@@ -158,17 +158,18 @@ namespace EeveeBot.Modules
             ProcessStartInfo startInfo;
 
             LanguagesConfig_Json lngs;
-            if (!File.Exists("lngs-config.json"))
+            string lngsConfigPath = $"{_config.Project_Path}\\lngs-config.json";
+            if (!File.Exists(lngsConfigPath))
             {
                 lngs = new LanguagesConfig_Json()
                 {
                     Languages = GetLanguages()
                 };
-                await _jsonMngr.UpdateJsonAsync(lngs, "lngs-config.json");
+                await _jsonMngr.UpdateJsonAsync(lngs, lngsConfigPath);
             }
             else
             {
-                lngs = await _jsonMngr.GetJsonObjectAsync<LanguagesConfig_Json>("lngs-config.json");
+                lngs = await _jsonMngr.GetJsonObjectAsync<LanguagesConfig_Json>(lngsConfigPath);
             }
 
             if (lng == "cs" || lng == "c#")
@@ -181,8 +182,8 @@ namespace EeveeBot.Modules
 
                 int currId = Directory.GetFiles("Code Evaluation").Length;
 
-                string scriptPath = $@"Code Evaluation\ev{lang.Extension}{currId}.{lang.Extension}";
-                string compiledPath = $"ev{lang.Extension}{currId}.exe";
+                string scriptPath = $@"{_config.Project_Path}\Code Evaluation\Scripts\ev{lang.Extension}{currId}.{lang.Extension}";
+                string compiledPath = $@"{_config.Project_Path}\Code Evaluation\Compiled\ev{lang.Extension}{currId}.exe";
 
                 using (StreamWriter writer = new StreamWriter(scriptPath))
                 {
