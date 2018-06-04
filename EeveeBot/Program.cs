@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -104,13 +105,34 @@ namespace EeveeBot
         {
             int paramPos = 0;
             if (!(msg is SocketUserMessage userMsg)) return;
+            var context = new SocketCommandContext(_dClient, userMsg);
             if (msg.Author.Id == _config.Client_Id) return;
+
+            string content = msg.Content;
+            if(content.Count(x => x == Defined.EMOTE_SEPARATOR_CHAR) >= 2)
+            {
+                await Task.Run(async () =>
+               {
+                   var emoteNames = content.AllBetween(Defined.EMOTE_SEPARATOR_CHAR);
+                   IList<Db_EeveeEmote> emotes = new List<Db_EeveeEmote>();
+                   foreach (var n in emoteNames)
+                   {
+                       var em = _db.GetWhere<Db_EeveeEmote>("emotes", x => x.GetAllNamesLowered(msg.Author.Id).Contains(n.ToLower()));
+                       if (em != null)
+                       {
+                           emotes.Add(em);
+                       }
+                   }
+                   string formatted = string.Join(" ", emotes.Select(x => x.ToString()));
+                   await context.Channel.SendMessageAsync(formatted);
+               });
+            }
+
             string prefix = _config.Prefixes.FirstOrDefault(x => userMsg.HasStringPrefix(x, ref paramPos, StringComparison.OrdinalIgnoreCase));
             var isBlacklisted = _db.GetCollection<Db_BlacklistUser>("blacklist").FindOne(x => x.Id == msg.Author.Id) != null;
 
             if ((prefix != null || userMsg.HasMentionPrefix(_dClient.CurrentUser, ref paramPos)) && !isBlacklisted)
             {
-                var context = new SocketCommandContext(_dClient, userMsg);
                 var result = await _cmdService.ExecuteAsync(context, paramPos, _serviceProvider);
                 if (!result.IsSuccess)
                     await Log(result.ErrorReason, result.IsSuccess);

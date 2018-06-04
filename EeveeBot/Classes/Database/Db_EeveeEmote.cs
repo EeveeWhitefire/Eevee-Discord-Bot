@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Linq;
 
 using Discord;
 
@@ -51,11 +52,21 @@ namespace EeveeBot.Classes.Database
         }
 
         public bool TryAssociation(string name, ulong ownerId)
+            => GetAllNamesLowered(ownerId).Contains(name.ToLower());
+
+        public IEnumerable<string> GetAllNames(ulong ownerId)
         {
-            bool firstCon = Name.ToLower() == name.ToLower();
-            bool secondCon = Aliases.Exists(y => y.OwnerId == ownerId && y.Alias.ToLower() == name.ToLower());
-            return firstCon || secondCon;
+            List<string> list = new List<string>
+            {
+                Name
+            };
+
+            list.AddRange(Aliases.Where(x => x.OwnerId == ownerId).Select(x => x.Alias));
+            return list;
         }
+
+        public IEnumerable<string> GetAllNamesLowered(ulong ownerId)
+            => GetAllNames(ownerId).Select(x => x.ToLower());
     }
 
     public class Obj_EeveeEmote : Db_EeveeEmote

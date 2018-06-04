@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Linq;
 using System.Linq.Expressions;
 
 using LiteDB;
@@ -42,6 +43,12 @@ namespace EeveeBot.Classes.Database
         {
             GetCollection<T>(tableName).Delete(pred);
         }
+
+        public T GetWhere<T>(string tableName, Func<T, bool> pred) where T : class
+            => GetAll<T>(tableName).FirstOrDefault(pred);
+
+        public IEnumerable<T> GetAllWhere<T>(string tableName, Func<T, bool> pred) where T : class
+            => GetAll<T>(tableName).Where(pred);
 
         public IEnumerable<T> GetAll<T>(string name) where T : class
             => GetCollection<T>(name).FindAll();

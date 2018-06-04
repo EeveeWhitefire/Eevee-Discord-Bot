@@ -32,6 +32,7 @@ namespace EeveeBot
         public const string ERROR_THUMBNAIL = @"https://cdn2.iconfinder.com/data/icons/color-svg-vector-icons-2/512/error_warning_alert_attention-512.png";
         public const string SUCCESS_THUMBNAIL = @"https://cdn2.iconfinder.com/data/icons/perfect-flat-icons-2/512/Ok_check_yes_tick_accept_success_green_correct.png";
         public const int MAX_EMOTES_IN_GUILD = 50;
+        public const char EMOTE_SEPARATOR_CHAR = '!';
 
         public static async Task SendErrorMessage(EmbedBuilder eBuilder, SocketCommandContext Context, 
             ErrorTypes err, object entity, string type, string src = null)
@@ -89,5 +90,36 @@ namespace EeveeBot
 
         public static string ErrorToString(this ErrorTypes err)
             => $"ERROR {(int)err}";
+
+        public static string[] AllBetween(this string str, char sep)
+        {
+            int n = str.Count(x => x == sep);
+            n = (int)(n / 2);
+            string[] between = new string[n];
+            for (int i = 0; i < n; i++)
+            {
+                between[i] = str.Replace(" ", string.Empty).Between(sep, i);
+            }
+
+            return between;
+        }
+
+        public static string Between(this string str, char sep, int c)
+        {
+            string origin = str;
+            int n = 0;
+            do
+            {
+                n = origin.IndexOf(sep);
+                str = new string(origin.Skip(n + 1).ToArray());
+                n = str.IndexOf(sep);
+                str = new string(str.Take(n).ToArray());
+                origin = new string(origin.Skip(n + 2).ToArray());
+                c--;
+            }
+            while (c >= 0);
+
+            return str;
+        }
     }
 }
