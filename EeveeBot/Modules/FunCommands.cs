@@ -7,6 +7,7 @@ using System.IO;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Reflection;
+using System.Net.Http;
 
 using Discord;
 using Discord.Commands;
@@ -21,50 +22,8 @@ using EeveeBot.Interfaces;
 
 namespace EeveeBot.Modules
 {
-    [Summary("Mostly weird commands but whatever suits your fancy")]
-    public class FunCommands : ModuleBase<SocketCommandContext>
-    {
-        private EmbedBuilder _eBuilder;
-        private DatabaseContext _db;
-        private Random _rnd;
-        private JsonManager_Service _jsonMngr;
-
-        public FunCommands(DatabaseContext db, Random rnd, JsonManager_Service jsonM)
-        {
-            _db = db;
-            _rnd = rnd;
-            _jsonMngr = jsonM;
-
-            _eBuilder = new EmbedBuilder
-            {
-                Color = Defined.Colors[_rnd.Next(Defined.Colors.Length - 1)]
-            };
-        }
-
-        [Command("ud")]
-        [Alias("urbandictionary")]
-        [Summary("Sends the meaning of the given input from Urban Dictionary!")]
-        public async Task UrbanDictionaryCommand(string input, int num = 1)
-        {
-            Uri url = new Uri($"http://api.urbandictionary.com/v0/define?term={input}");
-            var data = await _jsonMngr.GetJsonObjectAsync<UrbanDictionary_Json.Output>(url);
-
-            try
-            {
-                _eBuilder.WithTitle(input)
-                    .WithDescription(string.Join("\n", data.list.Take(num).Select(x => $"**{data.list.IndexOf(x) + 1}.** {x.definition}\n**Example:**\n{x.example}\n")))
-                    .WithUrl($"http://www.urbandictionary.com/define.php?term={input}");
-
-                await ReplyAsync(embed: _eBuilder.Build());
-            }
-            catch (Exception)
-            {
-                await ReplyAsync("Definition is too long for Embed text length!");
-            }
-        }
-    }
-
-    [Group("Emotes")]
+    [Name("Emote")]
+    [Group("emotes")]
     [Alias("em", "ems", "emote")]
     [Summary("The Emote System")]
     public class EmoteCommands : ModuleBase<SocketCommandContext>
@@ -96,75 +55,119 @@ namespace EeveeBot.Modules
 
         public async Task AddEmoteToDatabase(Emote em, string inNick)
         {
-            var emotes = _db.GetCollection<Db_Emote>("emotes").FindAll();
+            var emotes = _db.GetAll<Db_EeveeEmote>("emotes");
             if (emotes.Where(x => x.Id == em?.Id).Count() > 0)
             {
-                await ReplyAsync("Error : The emote is already registered!");
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E405, em.ToString(), "Emote", "the Emote Database");
+                await Task.CompletedTask;
             }
             else
             {
-                Obj_Emote nEmote = new Obj_Emote(em.Id, em.Name, em.Animated, em.Url);
-                var definitions = emotes.SelectMany(x => x.Nicknames).Where(x => x.OwnerId == Context.User.Id);
+                Db_EeveeEmote nEmote = new Db_EeveeEmote(await AddEmoteToEmoteGuilds(em));
+                var definitions = emotes.SelectMany(x => x.Aliases).Where(x => x.OwnerId == Context.User.Id);
 
-                if (inNick != null && !definitions.Select(x => x.Nickname.ToLower()).Contains(inNick.ToLower()))
+                if (inNick != null && !definitions.Select(x => x.Alias.ToLower()).Contains(inNick.ToLower()))
                 {
                     if (inNick.Length < NICKNAME_LENGTH_MIN)
                     {
-                        await ReplyAsync($"Error : A nickname must be at least {NICKNAME_LENGTH_MIN} chars long!");
+                        await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E406, NICKNAME_LENGTH_MIN, "Nickname (Alias)");
+                        await Task.CompletedTask;
                     }
                     else
                     {
-                        nEmote.Nicknames.Add(new UserDefined()
+                        nEmote.Aliases.Add(new EeveeEmoteAlias()
                         {
                             AssociatedEmoteId = nEmote.Id,
-                            Nickname = inNick,
+                            Alias = inNick,
                             OwnerId = Context.User.Id
                         });
                     }
                 }
+                _db.AddEntity("emotes", nEmote);
 
-                await DownloadEmote(em.Id, em.Url, em.Animated);
-
-                _db.GetCollection<Db_Emote>("emotes").Insert(nEmote.EncapsulateToDb());
-
-                _eBuilder.WithTitle(em.Name)
-                    .WithImageUrl(em.Url);
+                _eBuilder.WithTitle(nEmote.Name)
+                    .WithImageUrl(nEmote.Url);
 
                 await ReplyAsync(embed: _eBuilder.Build());
             }
         }
-
-        private Task DownloadEmote(ulong id, string url, bool isAnimated = false)
+        public async Task AddEmoteToDatabase(GuildEmote em, string inNick)
         {
-            using (WebClient webC = new WebClient())
+            await AddEmoteToDatabase((Emote)em, inNick);
+        }
+
+        private async Task<GuildEmote> AddEmoteToEmoteGuilds(Emote em)
+        {
+            SocketGuild guild = null;
+            Stream emoteStream = null;
+
+            using (HttpClient client = new HttpClient())
             {
-                string path = GetEmotePath(id, isAnimated);
-                if (!File.Exists(path))
+                emoteStream = await client.GetStreamAsync(em.Url);
+            }
+
+            foreach (var id in _config.Private_Guilds)
+            {
+                guild = Context.Client.GetGuild(id);
+                if ((em.Animated && guild.Emotes.Count(x => x.Animated) < Defined.MAX_EMOTES_IN_GUILD) || (!em.Animated && guild.Emotes.Count(x => !x.Animated) < Defined.MAX_EMOTES_IN_GUILD))
                 {
-                    webC.DownloadFileAsync(new Uri(url), path);
-                    _emotesYetToBeLoaded.Add(id, path); //will be loaded at next run
+                    break;
                 }
             }
-            return Task.CompletedTask;
+
+            var addedEmote = await guild.CreateEmoteAsync(em.Name, new Discord.Image(emoteStream));
+
+            emoteStream.Dispose();
+
+            return addedEmote;
         }
 
-        private string GetEmotePath(ulong id, bool isAnimated)
+        private async Task<GuildEmote> AddEmoteToEmoteGuilds(Db_EeveeEmote em)
         {
-            string dir = $"{_config.Project_Path}\\Emotes";
-            if (!Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
+            SocketGuild guild = null;
+            Stream emoteStream = null;
+            List<SocketGuild> guilds = new List<SocketGuild>();
+            bool choseGuild = false;
 
-            string fileName = $"{dir}\\{id}{(isAnimated ? ".gif" : ".png")}";
+            using (HttpClient client = new HttpClient())
+            {
+                emoteStream = await client.GetStreamAsync(em.Url);
+            }
 
-            return fileName;
-        }
-        private async Task EnsureEmoteExistsOnMachine(IEeveeEmote em)
-        {
-            if (!File.Exists(GetEmotePath(em.Id, em.IsAnimated)))
-                await DownloadEmote(em.Id, em.Url, em.IsAnimated);
+            foreach (var id in _config.Private_Guilds)
+            {
+                var it = Context.Client.GetGuild(id);
+                guilds.Add(it);
+                if (((em.IsAnimated && it.Emotes?.Count(x => x.Animated) < Defined.MAX_EMOTES_IN_GUILD) || 
+                    (!em.IsAnimated && it.Emotes?.Count(x => !x.Animated) < Defined.MAX_EMOTES_IN_GUILD)) && !choseGuild)
+                {
+                    guild = it;
+                    choseGuild = true;
+                }
+            }
+            var d = guilds.SelectMany( x => x.Emotes).FirstOrDefault(x => x.Name == em.Name);
+            if (d == null)
+            {
+                try
+                {
+                    var addedEmote = await guild.CreateEmoteAsync(em.Name, new Discord.Image(emoteStream));
+                    await Task.Delay(2000);
+
+                    emoteStream.Dispose();
+
+                    return addedEmote;
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.ToString());
+                    return null;
+                }
+            }
+            return d;
         }
 
         [Command("add")]
+        [Summary("Adds an emote to the Database.")]
         [Alias("create")]
         public async Task AddEmoteCommand(string emoteCode, [Remainder] string nick = null)
         {
@@ -175,11 +178,13 @@ namespace EeveeBot.Modules
                     await AddEmoteToDatabase(em, nick);
                 }
                 else
-                    await ReplyAsync($"Error! Emote {emoteCode} wasn't found!");
+                {
+                    await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, emoteCode, "Emote", "Discord");
+                }
             }
             catch (Exception)
             {
-                await ReplyAsync($"Error! Emote {emoteCode} wasn't found!");
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, emoteCode, "Emote", "Discord");
             }
         }
 
@@ -192,91 +197,32 @@ namespace EeveeBot.Modules
                 if (em != null)
                 {
                     await AddEmoteToDatabase(em, nick);
-
                 }
                 else
-                    await ReplyAsync($"Error! Emote associated with the ID {emoteId} wasn't found!");
+                    await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, emoteId, "Emote associated with the ID", "Discord");
             }
             catch (Exception)
             {
-                await ReplyAsync($"Error! Emote associated with the ID {emoteId} wasn't found!");
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, emoteId, "Emote associated with the ID", "Discord");
             }
         }
         
-        private async Task ResizeEmoteAndSendAsync(Db_Emote emote)
-        {
-            int size = EMOTE_RESOLUTION_SIZE;
-            string emPath = Directory.GetCurrentDirectory() + "\\" + emote.RelativePath;
-            Stream resource;
-            Image<Rgba32> img;
-            string fileName = emote.Id + $".{(emote.IsAnimated ? "gif" : "png")}";
-
-            if (_emotesYetToBeLoaded.Keys.Contains(emote.Id))
-            {
-                img = ImageSharp.Image.Load(_emotesYetToBeLoaded.FirstOrDefault( x => x.Key == emote.Id).Value);
-            }
-            else
-            {
-                var assembly = Assembly.GetExecutingAssembly();
-
-                resource = assembly.GetManifestResourceStream($"EeveeBot.Emotes.{fileName}");
-                img = ImageSharp.Image.Load(resource);
-                resource.Dispose();
-            }
-
-
-            int width = img.Width, height = img.Height;
-
-            if(height > width)
-            {
-                size = size > height ? height : EMOTE_RESOLUTION_SIZE;
-
-                width = Convert.ToInt16(width * (double)(size / height));
-                height = size;
-            }
-            else
-            {
-                size = size > width ? width : size;
-                height = Convert.ToInt16(height * (double)(size / width));
-                width = size;
-            }
-
-            if(!Directory.Exists("Temp"))
-                Directory.CreateDirectory("Temp");
-
-            string newPath = $"Temp\\{width}x{height}-{fileName}";
-
-            if (!File.Exists(newPath))
-            {
-                using (_ = File.Create(newPath))
-                { }
-                var resizedImg = img.Resize(width, height);
-                resizedImg.Save(newPath);
-                resizedImg.Dispose();
-            }
-            img.Dispose();
-
-            await Context.Channel.SendFileAsync(newPath);
-            File.Delete(newPath);
-        }
-
         [Command("send")]
+        [Summary("Sends the requested emote.")]
         [Alias("show")]
         public async Task SendEmoteCommand([Remainder] string name)
         {
-            name = name.Replace(":", string.Empty).Replace(" ", string.Empty);
+            name = name.Replace(":", string.Empty);
 
-            var emotes = _db.GetCollection<Db_Emote>("emotes").FindAll();
-            var definitions = emotes.SelectMany(x => x.Nicknames).Where(x => x.OwnerId == Context.User.Id);
+            var emotes = _db.GetAll<Db_EeveeEmote>("emotes");
             var emote = emotes
-                .FirstOrDefault(x => x.Name.Replace(" ", string.Empty).ToLower() == name.ToLower() || x.Nicknames.Count(y => y.Nickname.Replace(" ", string.Empty).ToLower() == name.ToLower()) > 0);
+                .FirstOrDefault(x => x.TryAssociation(name, Context.User.Id));
 
             if(emote != null)
             {
                 try
                 {
-                    await EnsureEmoteExistsOnMachine(emote);
-                    await ResizeEmoteAndSendAsync(emote);
+                    await ReplyAsync(emote.ToString());
                 }
                 catch (Exception e)
                 {
@@ -285,19 +231,20 @@ namespace EeveeBot.Modules
             }
             else
             {
-                await ReplyAsync("Error : The emote doesn't exist!");
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, name, "Emote", "the Emote Database");
             }
         }
 
         [Command("info")]
+        [Summary("Sends the requested emote's info (ID, Aliases etc)")]
         public async Task SendEmoteInfo([Remainder] string name)
         {
-            name = name.Replace(":", string.Empty).Replace(" ", string.Empty);
+            name = name.Replace(":", string.Empty);
 
-            var emotes = _db.GetCollection<Db_Emote>("emotes").FindAll();
-            var definitions = emotes.SelectMany(x => x.Nicknames).Where(x => x.OwnerId == Context.User.Id);
+            var emotes = _db.GetAll<Db_EeveeEmote>("emotes");
+            var definitions = emotes.SelectMany(x => x.Aliases).Where(x => x.OwnerId == Context.User.Id);
             var emote = emotes
-                .FirstOrDefault(x => x.Name.Replace(" ", string.Empty).ToLower() == name.ToLower() || x.Nicknames.Count(y => y.Nickname.Replace(" ", string.Empty).ToLower() == name.ToLower()) > 0);
+                .FirstOrDefault(x => x.Name.ToLower() == name.ToLower() || x.Aliases.Count(y => y.Alias.ToLower() == name.ToLower()) > 0);
             if (emote != null)
             {
                 _eBuilder.WithTitle($"{emote.Name} info:")
@@ -311,7 +258,7 @@ namespace EeveeBot.Modules
                     .AddField( x =>
                     {
                         x.Name = "__Available Nicknames__";
-                        x.Value = emote.Nicknames.Count > 0 ? string.Join("\n", emote.Nicknames.Select( y => y.Nickname)) : "None.";
+                        x.Value = emote.Aliases.Count > 0 ? string.Join("\n", emote.Aliases.Select( y => y.Alias)) : "None.";
                         x.IsInline = false;
                     })
                     .WithUrl(emote.Url)
@@ -321,93 +268,60 @@ namespace EeveeBot.Modules
             }
             else
             {
-                await ReplyAsync("Error : The emote doesn't exist!");
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, name, "Emote", "the Emote Database");
             }
         }
 
         [Command("rename")]
+        [Summary("Adds an Alias to the requested emote.")]
         [Alias("nick", "ren")]
         public async Task RenameEmoteCommand(string name, [Remainder] string nick)
         {
             nick = nick.Replace(":", string.Empty);
             name = name.Replace(":", string.Empty);
 
-            var emotes = _db.GetCollection<Db_Emote>("emotes").FindAll();
-            var definitions = emotes.SelectMany(x => x.Nicknames).Where(x => x.OwnerId == Context.User.Id);
-            var emote = emotes.FirstOrDefault(x => x.Name.ToLower() == name.ToLower());
+            var emotes = _db.GetAll<Db_EeveeEmote>("emotes");
+
+            var emote = emotes.FirstOrDefault(x => x.TryAssociation(name, Context.User.Id));
+            var userAliases = emotes.SelectMany(x => x.Aliases.Where(y => y.OwnerId == Context.User.Id)).ToList();
 
             if (nick.Length < NICKNAME_LENGTH_MIN)
             {
-                await ReplyAsync($"Error : A nickname must be at least {NICKNAME_LENGTH_MIN} chars long!");
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E406, NICKNAME_LENGTH_MIN, "Nickname (Alias)");
+                await Task.CompletedTask;
             }
-            else
+            else if (!userAliases.Exists(x => x.Alias.ToLower() == nick) &&
+                emotes.Select(x => x.Name.ToLower()).Count(x => x.ToLower() == nick) < 1)
             {
-
                 if (emote != null)
                 {
-                    if (emotes.Select(x => x.Name).Count(x => x.ToLower() == nick.ToLower()) < 1
-                        && !definitions.Select(x => x.Nickname.ToLower()).Contains(nick.ToLower()))
+                    if (emote.Aliases.Count(x => x.OwnerId == Context.User.Id) > NICKNAME_COUNT_MAX)
                     {
-                        if (emote.Nicknames.Count(x => x.OwnerId == Context.User.Id) > NICKNAME_COUNT_MAX)
-                        {
-                            await ReplyAsync("Error : You have exceeded the Nicknames capacity limit for this emote!" +
-                                $"\nIf you'd really like to add this one, please use {_config.Prefixes[0] }emotes delnick <nick> on " +
-                                $"one of the following:\n{string.Join("\n", emote.Nicknames.Where(x => x.OwnerId == Context.User.Id).Select(x => x.Nickname))}");
-                        }
-                        else
-                        {
-                            emote.Nicknames.Add(new UserDefined()
-                            {
-                                AssociatedEmoteId = emote.Id,
-                                Nickname = nick,
-                                OwnerId = Context.User.Id
-                            });
-
-                            _db.GetCollection<Db_Emote>("emotes").Update(emote);
-
-                            await ReplyAsync("Success");
-                        }
-                    }
-                }
-                else
-                {
-                    emote = emotes.FirstOrDefault(x => definitions.Where(y => y.AssociatedEmoteId == x.Id)
-                   .Count(y => y.Nickname.ToLower() == name.ToLower()) > 0);
-
-                    if (emote != null)
-                    {
-                        if (!definitions.Select(x => x.Nickname.ToLower()).Contains(nick.ToLower())
-                            && emotes.Select(x => x.Name).Count(x => x.ToLower() == nick.ToLower()) < 1)
-                        {
-                            if (emote.Nicknames.Count(x => x.OwnerId == Context.User.Id) > 3)
-                            {
-                                await ReplyAsync("Error : You have exceeded the Nicknames capacity limit for this emote!" +
-                                    $"\nIf you'd really like to add this one, please use {_config.Prefixes[0] }emotes delnick <nick> on " +
-                                    $"one of the following:\n{string.Join("\n", emote.Nicknames.Where(x => x.OwnerId == Context.User.Id).Select(x => x.Nickname))}");
-                            }
-                            else
-                            {
-                                emote.Nicknames.Add(new UserDefined()
-                                {
-                                    AssociatedEmoteId = emote.Id,
-                                    Nickname = nick,
-                                    OwnerId = Context.User.Id
-                                });
-
-                                _db.GetCollection<Db_Emote>("emotes").Update(emote);
-                                await ReplyAsync("Success");
-                            }
-                        }
+                        await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E408, null, $"You have exceeded the Aliases capacity limit for this Emote!" +
+                            $"\nIf you'd really like to add this one, please use {_config.Prefixes[0] }emotes delnick <nick> on " +
+                            $"one of the following:\n{string.Join("\n", emote.Aliases.Where(x => x.OwnerId == Context.User.Id).Select(x => x.Alias))}");
                     }
                     else
                     {
-                        await ReplyAsync("Error : The emote doesn't exist!");
+                        emote.Aliases.Add(new EeveeEmoteAlias()
+                        {
+                            AssociatedEmoteId = emote.Id,
+                            Alias = nick,
+                            OwnerId = Context.User.Id
+                        });
+
+                        _db.UpdateEntity("emotes", emote);
+
+                        await Defined.SendSuccessMessage(_eBuilder, Context, $"Added the Nickname **{nick}** to the Emote {emote}.");
                     }
                 }
+                else
+                    await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, name, "Emote", "the Emote Database");
             }
         }
 
         [Command("deleterename")]
+        [Summary("Unassociates the given Alias from its currently associated emote.")]
         [Alias("deletenick", "deleteren", "delrename", "delnick", "delren")]
         public async Task DeleteEmoteNicknameCommand([Remainder] string nick)
         {
@@ -418,29 +332,32 @@ namespace EeveeBot.Modules
             if (nick.EndsWith('\"'))
                 nick = new string(nick.Take(nick.Length - 1).ToArray());
 
-            var emotes = _db.GetCollection<Db_Emote>("emotes").FindAll();
-            var definition = emotes.SelectMany(x => x.Nicknames).Where(x => x.OwnerId == Context.User.Id)
-                .FirstOrDefault( x => x.Nickname.ToLower() == nick.ToLower());
+            var emotes = _db.GetAll<Db_EeveeEmote>("emotes");
+            var definition = emotes.SelectMany(x => x.Aliases).Where(x => x.OwnerId == Context.User.Id)
+                .FirstOrDefault( x => x.Alias.ToLower() == nick.ToLower());
 
             if (definition != null)
             {
                 var emote = emotes.FirstOrDefault(x => x.Id == definition.AssociatedEmoteId);
-                emote.Nicknames.RemoveAll(x => x.Nickname == definition.Nickname);
+                emote.Aliases.RemoveAll(x => x.Alias == definition.Alias);
 
-                _db.GetCollection<Db_Emote>("emotes").Update(emote);
-                await ReplyAsync("Success");
+                _db.UpdateEntity("emotes", emote);
+
+                await Defined.SendSuccessMessage(_eBuilder, Context, $"Deleted the Nickname {nick} from the Emote {emote}.");
             }
             else
-                await ReplyAsync($"Error! A nickname by the name of {nick} wasn't found!");
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, nick, "Alias", "the Emote Database");
         }
 
         [Command("list")]
+        [Summary("Lists all the emotes currently in the databases. Paged.")]
         [Alias("all")]
         public async Task SendEmoteListCommand(int page = 1)
         {
             const int MaxEmotesPerPage = 9;
-            var emotes = _db.GetCollection<Db_Emote>("emotes").FindAll().OrderByDescending(x => string.Join("", x.Nicknames).Length)
+            var emotes = _db.GetAll<Db_EeveeEmote>("emotes").OrderByDescending(x => x.Aliases.Count)
                 .OrderByDescending(x => x.IsAnimated);
+
             int NumOfEmotes = emotes.Count();
             int NumOfPages = NumOfEmotes / MaxEmotesPerPage + (NumOfEmotes % MaxEmotesPerPage != 0 ? 1 : 0);
             string text = string.Empty;
@@ -457,12 +374,15 @@ namespace EeveeBot.Modules
 
             var pagedEmotes = emotes.Skip((page - 1) * MaxEmotesPerPage).Take(MaxEmotesPerPage);
 
-            foreach (Db_Emote em in pagedEmotes)
+            foreach (Db_EeveeEmote em in pagedEmotes)
             {
-                var userDefined = em.Nicknames.Where(x => x.OwnerId == Context.User.Id);
-                _eBuilder.AddField($"__{em.Name}__" +
-                    $"{(userDefined.Count() > 0 ? " : " + string.Join(", ", userDefined.Select(x => x.Nickname)) : string.Empty)}", 
-                    em.Id.ToString() + (em.IsAnimated ? "\nAnimated" : string.Empty), true);
+                var userDefined = em.Aliases.Where(x => x.OwnerId == Context.User.Id);
+                _eBuilder.AddField(x =>
+                {
+                    x.Name = $"__{em.Name}__";
+                    x.Value = $"Aliases : {userDefined.Count()}" + (em.IsAnimated ? "\nAnimated" : string.Empty);
+                    x.IsInline = true;
+                });
             }
 
             await ReplyAsync(text, embed: _eBuilder.Build());

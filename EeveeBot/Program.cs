@@ -69,7 +69,6 @@ namespace EeveeBot
             _dClient.Log += Log;
             #endregion
 
-            _serviceProvider = BuildServiceProvider();
 
             #region Commands Next Initialization
             _cmdServiceConfig = new CommandServiceConfig()
@@ -82,7 +81,11 @@ namespace EeveeBot
             _cmdService = new CommandService(_cmdServiceConfig);
 
             _dClient.MessageReceived += HandleInput;
+
+            _serviceProvider = BuildServiceProvider();
+
             await _cmdService.AddModulesAsync(Assembly.GetEntryAssembly(), _serviceProvider);
+            _cmdService.Log += _cmdService_Log;
             #endregion
 
             await _dClient.LoginAsync(TokenType.Bot, _config.Token);
@@ -92,15 +95,20 @@ namespace EeveeBot
             await Task.Delay(-1);
         }
 
+        private async Task _cmdService_Log(LogMessage arg)
+        {
+            await Log(arg);
+        }
+
         private async Task HandleInput(SocketMessage msg)
         {
-            var userMsg = msg as SocketUserMessage;
             int paramPos = 0;
-            if (userMsg == null) return;
+            if (!(msg is SocketUserMessage userMsg)) return;
+            if (msg.Author.Id == _config.Client_Id) return;
             string prefix = _config.Prefixes.FirstOrDefault(x => userMsg.HasStringPrefix(x, ref paramPos, StringComparison.OrdinalIgnoreCase));
             var isBlacklisted = _db.GetCollection<Db_BlacklistUser>("blacklist").FindOne(x => x.Id == msg.Author.Id) != null;
 
-            if (prefix != null && !isBlacklisted)
+            if ((prefix != null || userMsg.HasMentionPrefix(_dClient.CurrentUser, ref paramPos)) && !isBlacklisted)
             {
                 var context = new SocketCommandContext(_dClient, userMsg);
                 var result = await _cmdService.ExecuteAsync(context, paramPos, _serviceProvider);
@@ -119,6 +127,7 @@ namespace EeveeBot
                 .AddSingleton(_config)
                 .AddSingleton(_jsonMngr)
                 .AddSingleton(_dClient)
+                .AddSingleton(_cmdService)
                 .BuildServiceProvider();
         }
 
@@ -162,7 +171,7 @@ namespace EeveeBot
         {
             HandleLogSeverity(msg.Severity);
 
-            Console.WriteLine(BuildLogMessage(msg.Severity.ToString(), msg.Source, msg.Message));
+            Console.WriteLine(BuildLogMessage(msg.Severity.ToString(), msg.Source, msg.Message ?? msg.Exception.InnerException.ToString()));
 
             Console.ForegroundColor = defColor;
             return Task.CompletedTask;

@@ -12,20 +12,30 @@ namespace EeveeBot.Classes.Database
     {
         [BsonId]
         public ulong Id { get; set; }
-        public bool IsOwner { get; set; }
+        public bool IsOwner { get; set; } = false;
 
         public Obj_WhitelistUser EncapsulateToObj()
         {
             return new Obj_WhitelistUser(Id, IsOwner);
         }
+
+        public override string ToString()
+            => $"{Id} {(IsOwner ? Defined.OWNER_ICON : Defined.WHITELISTED_ICON)}";
     }
 
-    public class Obj_WhitelistUser : IWhitelistUser, IUser
+    public class Obj_WhitelistUser : Db_WhitelistUser
     {
-        public ulong Id { get; protected set; }
-        public bool IsOwner { get; protected set; }
-
-
+        public new ulong Id
+        {
+            get { return base.Id; }
+            protected set { base.Id = value; }
+        }
+        public new bool IsOwner
+        {
+            get { return base.IsOwner; }
+            protected set { base.IsOwner = value; }
+        }
+        
         public Obj_WhitelistUser(ulong id, bool isOwner = false)
         {
             Id = id;
@@ -34,11 +44,7 @@ namespace EeveeBot.Classes.Database
 
         public Db_WhitelistUser EncapsulateToDb()
         {
-            return new Db_WhitelistUser()
-            {
-                Id = Id,
-                IsOwner = IsOwner
-            };
+            return this;
         }
     }
 }

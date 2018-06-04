@@ -18,9 +18,13 @@ namespace EeveeBot.Classes.Database
             return new Obj_BlacklistUser(Id);
         }
     }
-    public class Obj_BlacklistUser : IUser
+    public class Obj_BlacklistUser : Db_BlacklistUser
     {
-        public ulong Id { get; protected set; }
+        public new ulong Id
+        {
+            get { return base.Id; }
+            protected set { base.Id = value; }
+        }
 
 
         public Obj_BlacklistUser(ulong id)
@@ -30,10 +34,7 @@ namespace EeveeBot.Classes.Database
 
         public Db_BlacklistUser EncapsulateToDb()
         {
-            return new Db_BlacklistUser()
-            {
-                Id = Id
-            };
+            return this;
         }
     }
 }

@@ -14,85 +14,7 @@ using EeveeBot.Classes.Json;
 
 namespace EeveeBot.Modules
 {
-    public class RestrictionCommands : ModuleBase<SocketCommandContext>
-    {
-        private Config_Json _config;
-        private DatabaseContext _db;
-        private Color[] _pallete = Defined.Colors;
-
-        private EmbedBuilder _eBuilder;
-
-        public RestrictionCommands(Config_Json cnfg, DatabaseContext db)
-        {
-            _config = cnfg;
-            _db = db;
-
-            _eBuilder = new EmbedBuilder()
-            {
-                Color = _pallete[new Random().Next(0, _pallete.Length)]
-            };
-        }
-
-        [Command("chown")]
-        public async Task ChangeOwnerCommand([Remainder] SocketGuildUser u = null)
-        {
-            u = u ?? (SocketGuildUser)Context.User;
-
-            var whitelist = _db.GetCollection<Db_WhitelistUser>("whitelist").FindAll();
-            var currUser = whitelist.FirstOrDefault(x => x.Id == Context.User.Id);
-
-            if (currUser != null || whitelist.FirstOrDefault(x => x.IsOwner) == null)
-            {
-                if(whitelist.FirstOrDefault(x => x.IsOwner) == null)
-                {
-                    var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
-                    if (tUser == null)
-                    {
-                        tUser = new Obj_WhitelistUser(u.Id, true).EncapsulateToDb();
-                        _db.GetCollection<Db_WhitelistUser>("whitelist").Insert(tUser);
-                    }
-                    else
-                    {
-                        tUser.IsOwner = true;
-                        _db.GetCollection<Db_WhitelistUser>("whitelist").Update(tUser);
-                    }
-                }
-                else if (whitelist.FirstOrDefault(x => x.IsOwner).Id == Context.User.Id)
-                {
-                    if (u.Id != Context.User.Id)
-                    {
-                        currUser.IsOwner = false;
-
-                        var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
-                        if (tUser == null)
-                        {
-                            tUser = new Obj_WhitelistUser(u.Id, true).EncapsulateToDb();
-                            _db.GetCollection<Db_WhitelistUser>("whitelist").Insert(tUser);
-                        }
-                        else
-                        {
-                            tUser.IsOwner = true;
-                            _db.GetCollection<Db_WhitelistUser>("whitelist").Update(tUser);
-                        }
-
-                        _db.GetCollection<Db_WhitelistUser>("whitelist").Update(currUser);
-                    }
-
-                    await ReplyAsync("Success");
-                }
-                else
-                {
-                    await ReplyAsync("You cannot change the owner without having root privileges!");
-                }
-            }
-            else
-            {
-                await ReplyAsync("You cannot change the owner without having whitelist privileges!");
-            }
-        }
-
-    }
-
+    [Name("Whitelist")]
     [Group("whitelist")]
     [Alias("wl")]
     public class WhitelistCommands : ModuleBase<SocketCommandContext>
@@ -102,9 +24,6 @@ namespace EeveeBot.Modules
         private Color[] _pallete = Defined.Colors;
 
         private EmbedBuilder _eBuilder;
-
-        const string OwnerIcon = ":crown:";
-        const string WhitelistedIcon = ":white_check_mark:";
 
         public WhitelistCommands(Config_Json cnfg, DatabaseContext db)
         {
@@ -122,24 +41,32 @@ namespace EeveeBot.Modules
         public async Task WhitenUserCommand([Remainder] SocketGuildUser u = null)
         {
             u = u ?? (SocketGuildUser)Context.User;
-
-            var whitelist = _db.GetCollection<Db_WhitelistUser>("whitelist").FindAll();
-            var currUser = whitelist.FirstOrDefault(x => x.Id == Context.User.Id);
-
-            if(currUser != null || whitelist.Count() < 1)
+            if (u.Id == _config.Client_Id)
             {
-                var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
-                if (tUser == null)
-                {
-                    tUser = new Obj_WhitelistUser(u.Id, whitelist.Count() < 1).EncapsulateToDb();
-                    _db.GetCollection<Db_WhitelistUser>("whitelist").Insert(tUser);
-                }
-
-                await ReplyAsync("Success");
+                await ReplyAsync($"You can't whitelist {_config.Bot_Name} for itself smh");
+                await Task.CompletedTask;
             }
             else
             {
-                await ReplyAsync("Only Whitelisted users can do that!");
+
+                var whitelist = _db.GetAll<Db_WhitelistUser>("whitelist");
+                var currUser = whitelist.FirstOrDefault(x => x.Id == Context.User.Id);
+
+                if (currUser != null || whitelist.Count() < 1)
+                {
+                    var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
+                    if (tUser == null)
+                    {
+                        tUser = new Obj_WhitelistUser(u.Id, whitelist.Count() < 1).EncapsulateToDb();
+                        _db.AddEntity("whitelist", tUser);
+                    }
+
+                    await ReplyAsync("Success");
+                }
+                else
+                {
+                    await ReplyAsync("Only Whitelisted users can do that!");
+                }
             }
         }
 
@@ -149,7 +76,7 @@ namespace EeveeBot.Modules
         {
             u = u ?? (SocketGuildUser)Context.User;
 
-            var whitelist = _db.GetCollection<Db_WhitelistUser>("whitelist").FindAll();
+            var whitelist = _db.GetAll<Db_WhitelistUser>("whitelist");
             var currUser = whitelist.FirstOrDefault(x => x.Id == Context.User.Id);
 
             if (currUser != null)
@@ -159,7 +86,7 @@ namespace EeveeBot.Modules
                 {
                     if (currUser.Id == tUser.Id || currUser.IsOwner)
                     {
-                        _db.GetCollection<Db_WhitelistUser>("whitelist").Delete(x => x.Id == tUser.Id);
+                        _db.DeleteEntity<Db_EeveeEmote>("whitelist", (x => x.Id == tUser.Id));
                         await ReplyAsync("Success");
                     }
                     else
@@ -180,7 +107,7 @@ namespace EeveeBot.Modules
         [Alias("show", "showlist")]
         public async Task ShowWhitelistCommand()
         {
-            var whitelist = _db.GetCollection<Db_WhitelistUser>("whitelist").FindAll().OrderByDescending( x => x.IsOwner);
+            var whitelist = _db.GetAll<Db_WhitelistUser>("whitelist").OrderByDescending( x => x.IsOwner);
             
             _eBuilder.WithTitle("The Whitelist:");
 
@@ -194,15 +121,29 @@ namespace EeveeBot.Modules
                 {
                     try
                     {
-                        var user = Context.Guild.Users.FirstOrDefault(x => x.Id == u.Id);
-                        _eBuilder.AddField($"__{user.Nickname ?? user.Username}__", 
-                            $"{u.Id.ToString()} {(u.IsOwner ? OwnerIcon : WhitelistedIcon)}", false);
+                        var guildUser = Context.Guild.Users.FirstOrDefault(x => x.Id == u.Id);
+                        if(guildUser != null)
+                        {
+                            _eBuilder.AddField(x =>
+                            {
+                                x.Name = $"__{guildUser.Nickname ?? guildUser.Username}__";
+                                x.Value = u.ToString();
+                                x.IsInline = false;
+                            });
+                        }
+                        else
+                        {
+                            var user = Context.Client.GetUser(u.Id);
+                            _eBuilder.AddField(x =>
+                            {
+                                x.Name = $"__{user.Username}#{user.Discriminator}__";
+                                x.Value = u.ToString();
+                                x.IsInline = false;
+                            });
+                        }
                     }
                     catch (Exception)
                     {
-                        var user = Context.Client.GetUser(u.Id);
-                        _eBuilder.AddField($"__{user.Username}#{user.Discriminator}__",
-                            $"{u.Id.ToString()} {(u.IsOwner ? OwnerIcon : WhitelistedIcon)}", false);
                     }
 
                 }

@@ -12,7 +12,7 @@ namespace EeveeBot.Interfaces
         string Name { get; }
         string RelativePath { get; }
         bool IsAnimated { get; }
-        List<UserDefined> Nicknames { get; }
+        List<EeveeEmoteAlias> Aliases { get; }
         string Url { get; }
     }
 }
