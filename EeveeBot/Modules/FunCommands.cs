@@ -432,7 +432,7 @@ namespace EeveeBot.Modules
             arg = arg.ToLower();
 
             var emotes = _db.GetAll<Db_EeveeEmote>("emotes")
-                .Where(x => x.Name.ToLower().StartsWith(arg) || x.Aliases.Exists(y => y.Alias.ToLower().StartsWith(arg))).OrderByDescending(x => x.Aliases.Count)
+                .Where(x => x.Name.ToLower().Contains(arg) || x.Aliases.Exists(y => y.Alias.ToLower().Contains(arg))).OrderByDescending(x => x.Aliases.Count)
                 .OrderByDescending(x => x.IsAnimated);
 
             _eBuilder.WithTitle($"Results")
