@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 using Discord;
 using Discord.Commands;
+using System.Text.RegularExpressions;
 
 namespace EeveeBot
 {
@@ -19,7 +20,9 @@ namespace EeveeBot
         E405, ///already exists
         E406, ///invalid length - min
         E407, ///invalid length - max
-        E408 ///invalid length - free text
+        E408, ///invalid length - free text
+        E409, //no whitelisted privilege
+        E410 //no owner privilege
     }
 
     public class Defined
@@ -32,7 +35,13 @@ namespace EeveeBot
         public const string ERROR_THUMBNAIL = @"https://cdn2.iconfinder.com/data/icons/color-svg-vector-icons-2/512/error_warning_alert_attention-512.png";
         public const string SUCCESS_THUMBNAIL = @"https://cdn2.iconfinder.com/data/icons/perfect-flat-icons-2/512/Ok_check_yes_tick_accept_success_green_correct.png";
         public const int MAX_EMOTES_IN_GUILD = 50;
-        public const char EMOTE_SEPARATOR_CHAR = '!';
+        public const string EMOTE_SEPARATOR_PREFIX = ";;";
+        public const int COMMANDS_COOLDOWN = 3000;
+        public const string COOKIE_THUMBNAIL = @"http://static1.squarespace.com/static/57b5da73b3db2b7747f9c3a4/t/58916aaaebbd1ade326d74f2/1510756771216/";
+        public const string BIG_BOSS_THUMBNAIL = @"https://cdn.discordapp.com/attachments/297913371884388353/449286701257588747/big_boss-blurple.png";
+        public const string COPYRIGHTS_MESSAGE = "EeveeBot made by TalH#6144. All rights reserved ©";
+        public const string DATE_THUMBNAIL = @"https://cdn2.iconfinder.com/data/icons/business-flatcircle/512/calendar-512.png";
+        public const string INVITE_URL = @"https://discordapp.com/oauth2/authorize?client_id=337649506856468491&scope=bot";
 
         public static async Task SendErrorMessage(EmbedBuilder eBuilder, SocketCommandContext Context, 
             ErrorTypes err, object entity, string type, string src = null)
@@ -56,6 +65,12 @@ namespace EeveeBot
                     break;
                 case ErrorTypes.E408:
                     eBuilder.WithDescription(type + "."); //type - the free text
+                    break;
+                case ErrorTypes.E409:
+                    eBuilder.WithDescription($"You must be Whitelisted in order to {type}"); //type - free text
+                    break;
+                case ErrorTypes.E410:
+                    eBuilder.WithDescription($"You must be the Owner in order to {type}"); //type - free text
                     break;
                 default:
                     break;
@@ -91,6 +106,17 @@ namespace EeveeBot
         public static string ErrorToString(this ErrorTypes err)
             => $"ERROR {(int)err}";
 
+        public static string[] AllBetween(this string str, string sep)
+        {
+            int n = (int)(str.CountString(sep) / 2);
+            string[] between = new string[n];
+            for (int i = 0; i < n; i++)
+            {
+                between[i] = str.Between(sep, i);
+            }
+
+            return between;
+        }
         public static string[] AllBetween(this string str, char sep)
         {
             int n = str.Count(x => x == sep);
@@ -98,10 +124,28 @@ namespace EeveeBot
             string[] between = new string[n];
             for (int i = 0; i < n; i++)
             {
-                between[i] = str.Replace(" ", string.Empty).Between(sep, i);
+                between[i] = str.Between(sep, i);
             }
 
             return between;
+        }
+
+        public static string Between(this string str, string sep, int c)
+        {
+            string origin = str;
+            int n = 0;
+            do
+            {
+                n = origin.IndexOf(sep);
+                str = new string(origin.Skip(n + sep.Length).ToArray());
+                n = str.IndexOf(sep);
+                str = new string(str.Take(n).ToArray());
+                origin = new string(origin.Skip(n + sep.Length*2).ToArray());
+                c--;
+            }
+            while (c >= 0);
+
+            return str;
         }
 
         public static string Between(this string str, char sep, int c)
@@ -120,6 +164,45 @@ namespace EeveeBot
             while (c >= 0);
 
             return str;
+        }
+
+        public static int CountString(this string str, string input)
+        {
+            if (input.Length > 0)
+            {
+                string checkOn = input;
+                int occurrences = 0;
+                int chCount = 0;
+                foreach (char c in str)
+                {
+                    if (c == checkOn[0])
+                    {
+                        chCount++;
+                        checkOn = new string(checkOn.Skip(1).ToArray());
+                        if (chCount == input.Length)
+                        {
+                            occurrences++;
+                            chCount = 0;
+                            checkOn = input;
+                        }
+                    }
+                }
+                return occurrences;
+            }
+            return 0;
+        }
+
+        public static int CountWords(this string str)
+        {
+            str = str.Trim(' ');
+            return str.Split(' ').Length;
+        }
+
+        public static int CountWord(this string str, string input)
+        {
+            str = str.Trim(' ').ToLower();
+            var words = str.Split(' ');
+            return words.Count(x => x == input.ToLower());
         }
     }
 }

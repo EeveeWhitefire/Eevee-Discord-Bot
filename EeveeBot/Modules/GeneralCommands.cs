@@ -13,6 +13,7 @@ using EeveeBot.Classes;
 using EeveeBot.Classes.Database;
 using EeveeBot.Classes.Services;
 using EeveeBot.Classes.Json;
+using System.Diagnostics;
 
 namespace EeveeBot.Modules
 {
@@ -22,30 +23,64 @@ namespace EeveeBot.Modules
     {
         private EmbedBuilder _eBuilder;
         private EmbedFooterBuilder _eFooter;
+
         private DatabaseContext _db;
-        private Random _rnd;
+
         private CommandService _cmdService;
         private Config_Json _config;
         private JsonManager_Service _jsonMngr;
+        private Random _rnd;
 
         public GeneralCommands(DatabaseContext db, Random rnd, CommandService cmdService, Config_Json cnfg, JsonManager_Service jsonM)
         {
             _db = db;
             _rnd = rnd;
             _cmdService = cmdService;
-            _eFooter = new EmbedFooterBuilder();
-            _eFooter.WithText("EeveeBot made by TalH#6144. All rights reserved ©");
             _config = cnfg;
             _jsonMngr = jsonM;
 
+            _eFooter = new EmbedFooterBuilder()
+            {
+                IconUrl = Defined.BIG_BOSS_THUMBNAIL,
+                Text = Defined.COPYRIGHTS_MESSAGE
+            };
+
             _eBuilder = new EmbedBuilder
             {
-                Color = Defined.Colors[_rnd.Next(Defined.Colors.Length - 1)]
+                Color = Defined.Colors[_rnd.Next(Defined.Colors.Length - 1)],
+                Footer = _eFooter
             };
         }
 
-        [Command("uinfo")]
-        [Alias("userinfo")]
+        [Command("botinfo")]
+        [Alias("info", "binfo")]
+        public async Task SendBotInfo()
+        {
+            string privateMemory;
+            using (Process proc = Process.GetCurrentProcess())
+            {
+                privateMemory = $"{Math.Round(proc.PrivateMemorySize64 / Math.Pow(10, 6), 2)}MB";
+            }
+
+            _eBuilder.WithTitle(_config.Bot_Name + "'s Info")
+                .AddField(x =>
+                {
+                    x.Name = "__Server Count__";
+                    x.Value = Context.Client.Guilds.Count;
+                    x.IsInline = true;
+                })
+                .AddField(x =>
+               {
+                   x.Name = "__Private Memory Allocated__";
+                   x.Value = privateMemory;
+                   x.IsInline = true;
+               });
+
+            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+        }
+
+        [Command("userinfo")]
+        [Alias("uinfo")]
         [Summary("Sends the User Info of the specified user")]
         public async Task UserInfoCommand([Remainder] SocketGuildUser u = null)
         {
@@ -63,11 +98,38 @@ namespace EeveeBot.Modules
             await Context.Channel.SendMessageAsync(string.Empty, embed: _eBuilder.Build());
         }
 
+        [Command("guildinfo")]
+        [Alias("ginfo")]
+        [Summary("Sends the Guild Info of the specified user")]
+        public async Task GuildInfoCommand()
+        {
+            var g = Context.Guild;
+
+            _eBuilder.WithTitle(g.Name)
+                .AddField("__ID__", g.Id.ToString(), true)
+                .AddField("__Created At__", g.CreatedAt, true)
+                .AddField("__Owner__", g.Owner.Mention, true)
+                .AddField("__Members__", g.MemberCount, true)
+                .AddField("__Roles__", g.Roles.Count() > 0 ? string.Join(" | ", g.Roles.Select(x => x.Mention)) : "None", false)
+                .AddField("__Text Channels__", g.TextChannels.Count() > 0 ? string.Join(" | ", g.TextChannels.Select(x => x.Mention)) : "None", true)
+                .WithThumbnailUrl(g.IconUrl);
+
+            await Context.Channel.SendMessageAsync(string.Empty, embed: _eBuilder.Build());
+        }
+
         [Command("invite")]
         [Alias("invitelink", "inv", "invlink")]
         public async Task SendInvitationLinkCommand()
         {
-            await ReplyAsync(@"https://discordapp.com/oauth2/authorize?client_id=337649506856468491&scope=bot");
+            _eBuilder.WithTitle($"{_config.Bot_Name}'s Invite Link")
+                .WithUrl(Defined.INVITE_URL)
+                .AddField(x =>
+                {
+                    x.Name = "__Url__";
+                    x.Value = Defined.INVITE_URL;
+                });
+
+            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
 
         [Command("ud")]
@@ -81,8 +143,23 @@ namespace EeveeBot.Modules
             try
             {
                 _eBuilder.WithTitle(input)
-                    .WithDescription(string.Join("\n", data.list.Take(num).Select(x => $"**{data.list.IndexOf(x) + 1}.** {x.definition}\n**Example:**\n{x.example}\n")))
                     .WithUrl($"http://www.urbandictionary.com/define.php?term={input}");
+                for (int i = 0; i < data.list.Take(num).Count(); i++)
+                {
+                    _eBuilder.AddField(x =>
+                    {
+                        x.Name = $"__Definition #{(i + 1)}__";
+                        x.Value = data.list[i].definition;
+                        x.IsInline = false;
+
+                    })
+                    .AddField(x =>
+                    {
+                       x.Name = "__Examples__";
+                       x.Value = data.list[i].example;
+                       x.IsInline = false;
+                    });
+                }
 
                 await ReplyAsync(embed: _eBuilder.Build());
             }
@@ -94,6 +171,7 @@ namespace EeveeBot.Modules
 
         [Command("say")]
         [Alias("send")]
+        [Summary("Sends the given Text to the specified Channel")]
         public async Task SendText(SocketTextChannel channel, [Remainder] string text)
         {
             await channel.SendMessageAsync(text);
@@ -103,9 +181,10 @@ namespace EeveeBot.Modules
         {
             await ReplyAsync(text);
         }
-
-
-        [Command("mcavatar")]
+        
+        [Command("minecraftavatar")]
+        [Alias("mcavatar")]
+        [Summary("Sends the Minecraft Avatar of the specified Player")]
         public async Task SendMinecraftSkin(string username)
         {
             string url = $@"https://visage.surgeplay.com/full/512/{username}";
@@ -114,38 +193,49 @@ namespace EeveeBot.Modules
                 .WithImageUrl(url);
             
 
-            await ReplyAsync("", embed: _eBuilder.Build());
+            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
 
         [Command("date")]
         [Alias("currdate")]
         public async Task SendTimeInFuturistic()
         {
-            string now = DateTimeOffset.UtcNow.ToString("ddMMyyyy");
-            char[] arr = now.ToCharArray();
-            await ReplyAsync("Current date is : " + new string(arr.ByOrder(0,2,4,5,1,3,6,7)));
+            _eBuilder.WithTitle("Current Data")
+                .AddField(x =>
+                {
+                    x.Name = "__General Format__";
+                    x.Value = DateTimeOffset.UtcNow.ToString("dd/MM/yyyy");
+                    x.IsInline = true;
+                })
+                .AddField(x =>
+                {
+                    x.Name = "__Futuristic Format__";
+                    x.Value = new string(DateTimeOffset.UtcNow.ToString("ddMMyyyy").ToCharArray().ByOrder(0, 2, 4, 5, 1, 3, 6, 7));
+                    x.IsInline = true;
+                })
+                .WithThumbnailUrl(Defined.DATE_THUMBNAIL);
+
+            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
 
 
-        private async Task PrepareCommandHelp(IEnumerable<CommandInfo> commands, string group = null)
+        private async Task PrepareCommandHelp(CommandInfo command, string group = null)
         {
-            var cmd = commands.FirstOrDefault();
-            var parameters = string.Join("\n",
-                    commands.Select(x => $"**{_config.Prefixes[0]}{(group != null ? $"{group} " : string.Empty)}{cmd.Name}** " +
-                   $"{string.Join(" ", x.Parameters.Select(y => $"{(y.IsOptional ? "[" : "<")}{y.Name}{(y.IsOptional ? "]" : ">")}"))}"));
-            var aliases = string.Join(" ", cmd.Aliases.Where(y => y != string.Empty).Select(y => $"`{y}`"));
 
-            _eBuilder.WithTitle($"The {cmd.Name} Command")
+            var parameters = string.Join(" ", command.Parameters.Select(y => $"{(y.IsOptional ? "[" : "<")}{y.Name}{(y.IsOptional ? "]" : ">")}"));
+            var aliases = string.Join(" ", command.Aliases.Where(y => y != string.Empty).Select(y => $"`{y}`"));
+
+            _eBuilder.WithTitle($"The {command.Name} Command")
                 .AddField(x =>
                 {
                     x.Name = "__Summary__";
-                    x.Value = $"**{(cmd.Summary ?? "No Summary")}**\n{(cmd.Remarks ?? "Public Permission")}.";
+                    x.Value = $"**{(command.Summary ?? "No Summary")}**\n{(command.Remarks ?? "Public Permission")}.";
                     x.IsInline = false;
                 })
                 .AddField(x =>
                 {
                     x.Name = "__Module__";
-                    x.Value = cmd.Module.Name;
+                    x.Value = command.Module.Name;
                     x.IsInline = false;
                 })
                 .AddField(x =>
@@ -157,7 +247,7 @@ namespace EeveeBot.Modules
                .AddField(x =>
                 {
                     x.Name = "__Syntax__";
-                    x.Value = parameters;
+                    x.Value = string.Join("\n", command.Aliases.Select(y => $"**{_config.Prefixes[0]}{y}** {parameters}"));
                     x.IsInline = false;
                 });
 
@@ -190,21 +280,14 @@ namespace EeveeBot.Modules
 
             await Task.CompletedTask;
         }
-        private async Task Prepare404Help(string arg)
-        {
-            _eBuilder.WithTitle("ERROR 404")
-                .WithDescription($"Command or Module **{arg}** wasn't found!");
-
-            await Task.CompletedTask;
-        }
 
 
         [Command("help")]
         public async Task SendHelpCommand([Remainder] string arg = null)
         {
-            _eFooter.WithIconUrl(@"https://cdn.discordapp.com/attachments/297913371884388353/449286701257588747/big_boss-blurple.png");
-            _eBuilder.WithFooter(_eFooter)
-                .WithThumbnailUrl(@"http://static1.squarespace.com/static/57b5da73b3db2b7747f9c3a4/t/58916aaaebbd1ade326d74f2/1510756771216/");
+            _eBuilder.WithThumbnailUrl(Defined.COOKIE_THUMBNAIL);
+            arg = arg.ToLower();
+
             if (arg == null)
             {
                 _eBuilder.WithTitle("All Commands")
@@ -221,43 +304,27 @@ namespace EeveeBot.Modules
             }
             else
             {
-                var split = arg.ToLower().Split(' ');
                 var module = _cmdService.Modules
-                    .FirstOrDefault(x => x.Name.ToLower() == split[0] || (x.Aliases.Select( y => y.ToLower()).Contains(split[0])));
+                    .FirstOrDefault(x => x.Aliases.Select( y => y.ToLower()).Contains(arg));
 
                 if (module != null)
                 {
-                    if (split.Length > 1)
-                    {
-                        var commands = module.Commands.Where(x => x.Name.ToLower() == split[1] || (x.Aliases.Select(y => y.ToLower()).Contains(split[1])));
-                        if (commands.Count() > 0)
-                            await PrepareCommandHelp(commands, module.Group.ToLower());
-                        else
-                            await PrepareModuleHelp(module);
-                    }
-                    else await PrepareModuleHelp(module);
-
+                    await PrepareModuleHelp(module);
                 }
                 else if(module == null)
                 {
-                    if(split.Length > 1)
-                    {
-                        await Prepare404Help(arg);
-                    }
+                    var command = _cmdService.Commands.FirstOrDefault(x => x.Aliases.Select(y => y.ToLower()).Contains(arg));
+
+                    if (command != null)
+                        await PrepareCommandHelp(command);
                     else
                     {
-                        var commands = _cmdService.Commands.Where(x => x.Module.Group == null && x.Name.ToLower() == split[0] || (x.Aliases.Select(y => y.ToLower()).Contains(split[0])));
-                        if (commands.Count() > 0)
-                            await PrepareCommandHelp(commands);
-                        else
-                        {
-                            await Prepare404Help(arg);
-                        }
+                        await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, arg, "Command", _config.Bot_Name);
                     }
                 }
             }
 
-            await ReplyAsync("", embed: _eBuilder.Build());
+            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
     }
 }

@@ -21,18 +21,27 @@ namespace EeveeBot.Modules
     {
         private Config_Json _config;
         private DatabaseContext _db;
-        private Color[] _pallete = Defined.Colors;
+        private Random _rnd;
 
         private EmbedBuilder _eBuilder;
+        private EmbedFooterBuilder _eFooter;
 
-        public WhitelistCommands(Config_Json cnfg, DatabaseContext db)
+        public WhitelistCommands(Config_Json cnfg, DatabaseContext db, Random rnd)
         {
             _config = cnfg;
             _db = db;
+            _rnd = rnd;
 
-            _eBuilder = new EmbedBuilder()
+            _eFooter = new EmbedFooterBuilder()
             {
-                Color = _pallete[new Random().Next(0, _pallete.Length)]
+                IconUrl = Defined.BIG_BOSS_THUMBNAIL,
+                Text = Defined.COPYRIGHTS_MESSAGE
+            };
+
+            _eBuilder = new EmbedBuilder
+            {
+                Color = Defined.Colors[_rnd.Next(Defined.Colors.Length - 1)],
+                Footer = _eFooter
             };
         }
 
@@ -61,12 +70,15 @@ namespace EeveeBot.Modules
                         _db.AddEntity("whitelist", tUser);
                     }
 
-                    await ReplyAsync("Success");
+                    _db.DeleteEntity<Db_EeveeEmote>("whitelist", (x => x.Id == tUser.Id));
+                    _eBuilder.WithTitle("Success")
+                        .WithDescription($"Successfully added the User **{u.Username}#{u.Discriminator}** to the Whitelist")
+                        .WithThumbnailUrl(Defined.SUCCESS_THUMBNAIL);
+
+                    await ReplyAsync(string.Empty, embed: _eBuilder.Build());
                 }
                 else
-                {
-                    await ReplyAsync("Only Whitelisted users can do that!");
-                }
+                    await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "add a User to the Whitelist");
             }
         }
 
@@ -77,29 +89,29 @@ namespace EeveeBot.Modules
             u = u ?? (SocketGuildUser)Context.User;
 
             var whitelist = _db.GetAll<Db_WhitelistUser>("whitelist");
-            var currUser = whitelist.FirstOrDefault(x => x.Id == Context.User.Id);
+            var owner = whitelist.FirstOrDefault(x => x.IsOwner);
 
-            if (currUser != null)
+            if (owner != null)
             {
                 var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
                 if (tUser != null)
                 {
-                    if (currUser.Id == tUser.Id || currUser.IsOwner)
+                    if (Context.User.Id == tUser.Id || Context.User.Id == owner.Id)
                     {
                         _db.DeleteEntity<Db_EeveeEmote>("whitelist", (x => x.Id == tUser.Id));
-                        await ReplyAsync("Success");
+                        _eBuilder.WithTitle("Success")
+                            .WithDescription($"Successfully removed the User **{u.Username}#{u.Discriminator}** from the Whitelist")
+                            .WithThumbnailUrl(Defined.SUCCESS_THUMBNAIL);
+
+                        await ReplyAsync(string.Empty, embed: _eBuilder.Build());
                     }
                     else
                     {
-                        await ReplyAsync("Only the Owner can dewhiten other members");
+                        await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "remove a User from the Whitelist");
                     }
                 }
                 else
-                    await ReplyAsync("Success");
-            }
-            else
-            {
-                await ReplyAsync("Only Whitelisted users can do that!");
+                    await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, $"{u.Username}#{u.Discriminator}", "User", "Whitelist");
             }
         }
 

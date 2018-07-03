@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -25,6 +26,9 @@ namespace EeveeBot
         private CommandService _cmdService;
         private CommandServiceConfig _cmdServiceConfig;
         private DatabaseContext _db;
+        private TimeSpan _tempSpan;
+
+        private ConcurrentDictionary<ulong, TimeSpan> _userCommandCooldowns;
 
         private IServiceProvider _serviceProvider;
 
@@ -48,7 +52,7 @@ namespace EeveeBot
         public Program(string tPath)
         {
             _jsonMngr = new JsonManager_Service(tPath + "\\config.json");
-
+            _userCommandCooldowns = new ConcurrentDictionary<ulong, TimeSpan>();
         }
 
 
@@ -109,11 +113,11 @@ namespace EeveeBot
             if (msg.Author.Id == _config.Client_Id) return;
 
             string content = msg.Content;
-            if(content.Count(x => x == Defined.EMOTE_SEPARATOR_CHAR) >= 2)
+            if(content.CountString(Defined.EMOTE_SEPARATOR_PREFIX) >= 2)
             {
                 await Task.Run(async () =>
                {
-                   var emoteNames = content.AllBetween(Defined.EMOTE_SEPARATOR_CHAR);
+                   var emoteNames = content.AllBetween(Defined.EMOTE_SEPARATOR_PREFIX);
                    IList<Db_EeveeEmote> emotes = new List<Db_EeveeEmote>();
                    foreach (var n in emoteNames)
                    {
@@ -133,11 +137,26 @@ namespace EeveeBot
 
             if ((prefix != null || userMsg.HasMentionPrefix(_dClient.CurrentUser, ref paramPos)) && !isBlacklisted)
             {
-                var result = await _cmdService.ExecuteAsync(context, paramPos, _serviceProvider);
-                if (!result.IsSuccess)
-                    await Log(result.ErrorReason, result.IsSuccess);
-            }
+                if (!(_userCommandCooldowns.Count(x => x.Key == userMsg.Author.Id) > 0
+                    && (DateTime.UtcNow.TimeOfDay - _userCommandCooldowns[userMsg.Author.Id])
+                    .TotalMilliseconds < Defined.COMMANDS_COOLDOWN))
+                {
+                    var result = await _cmdService.ExecuteAsync(context, paramPos, _serviceProvider);
+                    if (!result.IsSuccess)
+                    {
+                        await Log(result.ErrorReason, result.IsSuccess);
+                        _userCommandCooldowns.TryRemove(userMsg.Author.Id, out _tempSpan);
+                    }
+                    else
+                        _userCommandCooldowns[userMsg.Author.Id] = DateTime.UtcNow.TimeOfDay;
+                }
 
+                foreach (var item in _userCommandCooldowns
+                    .Where(x => (DateTime.UtcNow.TimeOfDay - x.Value).TotalMilliseconds >= Defined.COMMANDS_COOLDOWN))
+                {
+                    _userCommandCooldowns.TryRemove(item.Key, out _tempSpan);
+                }
+            }
         }
 
 

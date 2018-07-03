@@ -25,7 +25,9 @@ namespace EeveeBot.Modules
     public class UtilityCommands : ModuleBase<SocketCommandContext>
     {
         private EmbedBuilder _eBuilder;
-        private Color[] _pallete = Defined.Colors;
+        private EmbedFooterBuilder _eFooter;
+        
+        private Random _rnd;
 
         private Config_Json _config;
         private DatabaseContext _db;
@@ -34,26 +36,35 @@ namespace EeveeBot.Modules
         private Stopwatch _exesw;
         private Stopwatch _compilsw;
 
-        public UtilityCommands(Config_Json config, DatabaseContext db, JsonManager_Service jsonParser)
+        public UtilityCommands(Config_Json config, DatabaseContext db, JsonManager_Service jsonParser, Random rnd)
         {
             _config = config;
             _db = db;
+            _rnd = rnd;
             _jsonMngr = jsonParser;
 
-            _eBuilder = new EmbedBuilder()
+            _eFooter = new EmbedFooterBuilder()
             {
-                Color = _pallete[new Random().Next(0, _pallete.Length)]
+                IconUrl = Defined.BIG_BOSS_THUMBNAIL,
+                Text = Defined.COPYRIGHTS_MESSAGE
+            };
+
+            _eBuilder = new EmbedBuilder
+            {
+                Color = Defined.Colors[_rnd.Next(Defined.Colors.Length - 1)],
+                Footer = _eFooter
             };
         }
 
         [Command("ping")]
+        [Summary("Sends the Response Time and Latency of the Bot's connection")]
         public async Task SendPing()
         {
             Stopwatch s = new Stopwatch();
             s.Start();
             var msg = await ReplyAsync("Calculating ping");
             s.Stop();
-            await msg.ModifyAsync(x => x.Content = $"Response time: **{s.ElapsedMilliseconds}ms**\n" +
+            await msg.ModifyAsync(x => x.Content = $"Response Time: **{s.ElapsedMilliseconds}ms**\n" +
             $"Latency: **{Context.Client.Latency}ms**");
         }
 
@@ -64,12 +75,27 @@ namespace EeveeBot.Modules
             u = u ?? (SocketGuildUser)Context.User;
 
             var whitelist = _db.GetCollection<Db_WhitelistUser>("whitelist").FindAll();
-            var currUser = whitelist.FirstOrDefault(x => x.Id == Context.User.Id);
-
-            if (currUser != null || whitelist.FirstOrDefault(x => x.IsOwner) == null)
+            if (whitelist.FirstOrDefault(x => x.IsOwner) == null)
             {
-                if (whitelist.FirstOrDefault(x => x.IsOwner) == null)
+                var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
+                if (tUser == null)
                 {
+                    tUser = new Obj_WhitelistUser(u.Id, true).EncapsulateToDb();
+                    _db.GetCollection<Db_WhitelistUser>("whitelist").Insert(tUser);
+                }
+                else
+                {
+                    tUser.IsOwner = true;
+                    _db.GetCollection<Db_WhitelistUser>("whitelist").Update(tUser);
+                }
+            }
+            else if (whitelist.FirstOrDefault(x => x.IsOwner).Id == Context.User.Id)
+            {
+                if (u.Id != Context.User.Id)
+                {
+                    var currUser = whitelist.FirstOrDefault(x => x.Id == Context.User.Id);
+                    currUser.IsOwner = false;
+
                     var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
                     if (tUser == null)
                     {
@@ -81,38 +107,19 @@ namespace EeveeBot.Modules
                         tUser.IsOwner = true;
                         _db.GetCollection<Db_WhitelistUser>("whitelist").Update(tUser);
                     }
-                }
-                else if (whitelist.FirstOrDefault(x => x.IsOwner).Id == Context.User.Id)
-                {
-                    if (u.Id != Context.User.Id)
-                    {
-                        currUser.IsOwner = false;
 
-                        var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
-                        if (tUser == null)
-                        {
-                            tUser = new Obj_WhitelistUser(u.Id, true).EncapsulateToDb();
-                            _db.GetCollection<Db_WhitelistUser>("whitelist").Insert(tUser);
-                        }
-                        else
-                        {
-                            tUser.IsOwner = true;
-                            _db.GetCollection<Db_WhitelistUser>("whitelist").Update(tUser);
-                        }
-
-                        _db.GetCollection<Db_WhitelistUser>("whitelist").Update(currUser);
-                    }
-
-                    await ReplyAsync("Success");
+                    _db.GetCollection<Db_WhitelistUser>("whitelist").Update(currUser);
                 }
-                else
-                {
-                    await ReplyAsync("You cannot change the owner without having root privileges!");
-                }
+
+                _eBuilder.WithTitle("Success")
+                    .WithThumbnailUrl(Defined.SUCCESS_THUMBNAIL)
+                    .WithDescription($"Successfully changed the Owner of {_config.Bot_Name}");
+
+                await ReplyAsync(string.Empty, embed: _eBuilder.Build());
             }
             else
             {
-                await ReplyAsync("You cannot change the owner without having whitelist privileges!");
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "change the Owner");
             }
         }
 
@@ -357,7 +364,7 @@ namespace EeveeBot.Modules
                 await ReplyAsync(embed: _eBuilder.Build());
             }
             else
-                await ReplyAsync("Only Whitelisted users can use that!");
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "use the Code Evaluation Command");
         }
 
         
@@ -383,32 +390,17 @@ namespace EeveeBot.Modules
             await ReplyAsync($"{((SocketGuildUser)(Context.User)).Mention} I have succesfully deleted {msgsOfUser.Count()} messages from this channel!");
         }
 
-        [Command("memory")]
-        [Summary("Gets the number of bytes that the Bot's process has allocated.")]
-        public async Task GetMemoryStateCommand()
-        {
-            string privateMemory;
-            using (Process proc = Process.GetCurrentProcess())
-            {
-                privateMemory = $"{Math.Round(proc.PrivateMemorySize64 / Math.Pow(10,6), 2)}MB";
-            }
-
-            _eBuilder.AddField("__Private Memory Allocated__", privateMemory);
-
-            await ReplyAsync("", embed: _eBuilder.Build());
-        }
-        
         [Command("relaunch")]
         [Alias("rel", "reset", "restart", "reboot")]
         [Summary("Restarts the bot!")]
         [Remarks("Whitelisted Users Only")]
         public async Task RelaunchBotCommand()
         {
-            var whitelist = _db.GetCollection<Db_WhitelistUser>("whitelist").FindAll();
+            var whitelist = _db.GetAll<Db_WhitelistUser>("whitelist");
             DirectoryInfo dInfo = new DirectoryInfo(Directory.GetCurrentDirectory());
             var path = dInfo.Parent.FullName + "\\Executions\\";
 
-            if (whitelist.FirstOrDefault(x => x.IsOwner)?.Id == (Context.User).Id)
+            if (whitelist.FirstOrDefault(x => x.Id == (Context.User).Id) != null)
             {
                 ProcessStartInfo ProcessInfo = new ProcessStartInfo($"{path}Run {_config.Bot_Name}.bat")
                 {
@@ -420,10 +412,7 @@ namespace EeveeBot.Modules
                 Environment.Exit(1);
             }
             else
-            {
-                _eBuilder.WithTitle("ERROR")
-                    .WithDescription("You don't have the required permission to relaunch the Bot!");
-            }
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, $"relaunch {_config.Bot_Name}");
         }
 
         [Command("sudo")]
@@ -431,17 +420,14 @@ namespace EeveeBot.Modules
         [Remarks("Owner Only")]
         public async Task SudoCommand(SocketGuildUser user, [Remainder] string args)
         {
-            var whitelist = _db.GetCollection<Db_WhitelistUser>("whitelist").FindAll();
+            var whitelist = _db.GetAll<Db_WhitelistUser>("whitelist");
 
             if (whitelist.FirstOrDefault(x => x.IsOwner)?.Id == (Context.User).Id)
             {
                 await Task.CompletedTask;
             }
             else
-            {
-                _eBuilder.WithTitle("ERROR")
-                    .WithDescription("You don't have the required permission to use sudo!");
-            }
+                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "use the Sudo Command");
         }
     }
 }

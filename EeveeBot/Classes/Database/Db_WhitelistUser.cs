@@ -35,7 +35,9 @@ namespace EeveeBot.Classes.Database
             get { return base.IsOwner; }
             protected set { base.IsOwner = value; }
         }
-        
+
+        public Obj_WhitelistUser() { }
+
         public Obj_WhitelistUser(ulong id, bool isOwner = false)
         {
             Id = id;

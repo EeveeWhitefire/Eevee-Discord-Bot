@@ -22,6 +22,7 @@ namespace EeveeBot.Classes.Database
     {
         [BsonId]
         public virtual ulong Id { get; set; }
+        public virtual ulong GuildId { get; set; }
         public string Name { get; set; }
         public bool IsAnimated { get; set; } = false;
         public List<EeveeEmoteAlias> Aliases { get; set; } = new List<EeveeEmoteAlias>();
@@ -30,17 +31,18 @@ namespace EeveeBot.Classes.Database
 
         public Db_EeveeEmote() { }
 
-        public Db_EeveeEmote(ulong id, string n, bool isAnimated, string url, List<EeveeEmoteAlias> names = null)
+        public Db_EeveeEmote(ulong id, ulong guildId, string n, bool isAnimated, string url, List<EeveeEmoteAlias> names = null)
         {
             Name = n;
             Id = id;
+            GuildId = guildId;
             IsAnimated = isAnimated;
             RelativePath = $@"Emotes\{Id}{(IsAnimated ? ".gif" : ".png")}";
             Url = url;
             Aliases = names ?? new List<EeveeEmoteAlias>();
         }
 
-        public Db_EeveeEmote(GuildEmote em) : this(em.Id, em.Name, em.Animated, em.Url)
+        public Db_EeveeEmote(GuildEmote em, ulong guildId) : this(em.Id, guildId, em.Name, em.Animated, em.Url)
         { }
 
         public override string ToString()
@@ -76,6 +78,11 @@ namespace EeveeBot.Classes.Database
         {
             get { return base.Id; }
             private set { base.Id = value; }
+        }
+        public new ulong GuildId
+        {
+            get { return base.GuildId; }
+            private set { base.GuildId = value; }
         }
         public new string Name
         {
@@ -114,8 +121,8 @@ namespace EeveeBot.Classes.Database
             Aliases = b.Aliases;
         }
 
-        public Obj_EeveeEmote(ulong id, string n, bool isAnimated, string url, List<EeveeEmoteAlias> aliases = null)
-            : base(id, n, isAnimated, url, aliases)
+        public Obj_EeveeEmote(ulong id, ulong guildId, string n, bool isAnimated, string url, List<EeveeEmoteAlias> aliases = null)
+            : base(id, guildId, n, isAnimated, url, aliases)
         {
         }
 
