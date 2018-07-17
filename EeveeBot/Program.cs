@@ -118,24 +118,22 @@ namespace EeveeBot
                 await Task.Run(async () =>
                {
                    var emoteNames = content.AllBetween(Defined.EMOTE_SEPARATOR_PREFIX);
-                   IList<Db_EeveeEmote> emotes = new List<Db_EeveeEmote>();
+                   IList<EeveeEmote> emotes = new List<EeveeEmote>();
                    foreach (var n in emoteNames)
                    {
-                       var em = _db.GetWhere<Db_EeveeEmote>("emotes", x => x.GetAllNamesLowered(msg.Author.Id).Contains(n.ToLower()));
-                       if (em != null)
-                       {
+                       var em = _db.TryEmoteAssociation(context.User.Id, n);
+                       if(em != null)
                            emotes.Add(em);
-                       }
                    }
                    string formatted = string.Join(" ", emotes.Select(x => x.ToString()));
-                   await context.Channel.SendMessageAsync(formatted);
+                   await Task.Run( async () => await  context.Channel.SendMessageAsync(formatted));
                });
             }
 
             string prefix = _config.Prefixes.FirstOrDefault(x => userMsg.HasStringPrefix(x, ref paramPos, StringComparison.OrdinalIgnoreCase));
-            var isBlacklisted = _db.GetCollection<Db_BlacklistUser>("blacklist").FindOne(x => x.Id == msg.Author.Id) != null;
+            if (_db.GetCollection<BlacklistUser>(Defined.BLACKLIST_TABLE_NAME).FindOne(x => x.Id == msg.Author.Id) != null) return;
 
-            if ((prefix != null || userMsg.HasMentionPrefix(_dClient.CurrentUser, ref paramPos)) && !isBlacklisted)
+            if (prefix != null || userMsg.HasMentionPrefix(_dClient.CurrentUser, ref paramPos))
             {
                 if (!(_userCommandCooldowns.Count(x => x.Key == userMsg.Author.Id) > 0
                     && (DateTime.UtcNow.TimeOfDay - _userCommandCooldowns[userMsg.Author.Id])

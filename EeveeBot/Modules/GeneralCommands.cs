@@ -42,7 +42,7 @@ namespace EeveeBot.Modules
             _eFooter = new EmbedFooterBuilder()
             {
                 IconUrl = Defined.BIG_BOSS_THUMBNAIL,
-                Text = Defined.COPYRIGHTS_MESSAGE
+                Text = Defined.FOOTER_MESSAGE
             };
 
             _eBuilder = new EmbedBuilder
@@ -74,7 +74,8 @@ namespace EeveeBot.Modules
                    x.Name = "__Private Memory Allocated__";
                    x.Value = privateMemory;
                    x.IsInline = true;
-               });
+               })
+               .WithFooter(Defined.COPYRIGHTS_MESSAGE);
 
             await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
@@ -200,7 +201,7 @@ namespace EeveeBot.Modules
         [Alias("currdate")]
         public async Task SendTimeInFuturistic()
         {
-            _eBuilder.WithTitle("Current Data")
+            _eBuilder.WithTitle("Current Date")
                 .AddField(x =>
                 {
                     x.Name = "__General Format__";
@@ -219,13 +220,13 @@ namespace EeveeBot.Modules
         }
 
 
-        private async Task PrepareCommandHelp(CommandInfo command, string group = null)
+        private async Task PrepareHelp(CommandInfo command)
         {
 
             var parameters = string.Join(" ", command.Parameters.Select(y => $"{(y.IsOptional ? "[" : "<")}{y.Name}{(y.IsOptional ? "]" : ">")}"));
             var aliases = string.Join(" ", command.Aliases.Where(y => y != string.Empty).Select(y => $"`{y}`"));
 
-            _eBuilder.WithTitle($"The {command.Name} Command")
+            _eBuilder.WithTitle($"{command.Name} | Commands")
                 .AddField(x =>
                 {
                     x.Name = "__Summary__";
@@ -247,18 +248,18 @@ namespace EeveeBot.Modules
                .AddField(x =>
                 {
                     x.Name = "__Syntax__";
-                    x.Value = string.Join("\n", command.Aliases.Select(y => $"**{_config.Prefixes[0]}{y}** {parameters}"));
+                    x.Value = $"**{_config.Prefixes[0]}{command.Aliases.FirstOrDefault()}** {parameters}";
                     x.IsInline = false;
                 });
 
-            await Task.CompletedTask;
+            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
-        private async Task PrepareModuleHelp(ModuleInfo module)
+        private async Task PrepareHelp(ModuleInfo module)
         {
             var aliases = string.Join(" ", module.Aliases.Where( y => y != string.Empty).Select(y => $"`{y}`"));
             var commands = string.Join("  ", module.Commands.GroupBy(y => y.Name).Select(y => $"`{y.FirstOrDefault().Name}`"));
 
-            _eBuilder.WithTitle($"The {module.Name} Module")
+            _eBuilder.WithTitle($"{module.Name} | Modules")
                 .AddField(x =>
                {
                    x.Name = "__Summary__";
@@ -278,7 +279,7 @@ namespace EeveeBot.Modules
                    x.IsInline = false;
                });
 
-            await Task.CompletedTask;
+            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
 
 
@@ -286,7 +287,6 @@ namespace EeveeBot.Modules
         public async Task SendHelpCommand([Remainder] string arg = null)
         {
             _eBuilder.WithThumbnailUrl(Defined.COOKIE_THUMBNAIL);
-            arg = arg.ToLower();
 
             if (arg == null)
             {
@@ -301,30 +301,31 @@ namespace EeveeBot.Modules
                         x.IsInline = true;
                     });
                 }
+
+                await ReplyAsync(string.Empty, embed: _eBuilder.Build());
             }
             else
             {
+                arg = arg.ToLower();
                 var module = _cmdService.Modules
                     .FirstOrDefault(x => x.Aliases.Select( y => y.ToLower()).Contains(arg));
 
                 if (module != null)
                 {
-                    await PrepareModuleHelp(module);
+                    await PrepareHelp(module);
                 }
                 else if(module == null)
                 {
                     var command = _cmdService.Commands.FirstOrDefault(x => x.Aliases.Select(y => y.ToLower()).Contains(arg));
 
                     if (command != null)
-                        await PrepareCommandHelp(command);
+                        await PrepareHelp(command);
                     else
                     {
                         await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, arg, "Command", _config.Bot_Name);
                     }
                 }
             }
-
-            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
     }
 }

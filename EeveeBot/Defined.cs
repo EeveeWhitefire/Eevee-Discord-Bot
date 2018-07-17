@@ -39,9 +39,18 @@ namespace EeveeBot
         public const int COMMANDS_COOLDOWN = 3000;
         public const string COOKIE_THUMBNAIL = @"http://static1.squarespace.com/static/57b5da73b3db2b7747f9c3a4/t/58916aaaebbd1ade326d74f2/1510756771216/";
         public const string BIG_BOSS_THUMBNAIL = @"https://cdn.discordapp.com/attachments/297913371884388353/449286701257588747/big_boss-blurple.png";
-        public const string COPYRIGHTS_MESSAGE = "EeveeBot made by TalH#6144. All rights reserved ©";
+        public const string FOOTER_MESSAGE = "EeveeBot made by TalH#6144. Licensed under MIT";
+        public const string COPYRIGHTS_MESSAGE = "Copyright © 2018 Tal Hadad. Licensed under MIT";
         public const string DATE_THUMBNAIL = @"https://cdn2.iconfinder.com/data/icons/business-flatcircle/512/calendar-512.png";
         public const string INVITE_URL = @"https://discordapp.com/oauth2/authorize?client_id=337649506856468491&scope=bot";
+
+        public const string WHITELIST_TABLE_NAME = "whitelist";
+        public const string BLACKLIST_TABLE_NAME = "blacklist";
+        public const string EEVEE_EMOTES_TABLE_NAME = "emotes";
+
+        public const int NICKNAME_COUNT_MAX = 2;
+        public const int NICKNAME_LENGTH_MIN = 2;
+        public const int EMOTE_RESOLUTION_SIZE = 36;
 
         public static async Task SendErrorMessage(EmbedBuilder eBuilder, SocketCommandContext Context, 
             ErrorTypes err, object entity, string type, string src = null)

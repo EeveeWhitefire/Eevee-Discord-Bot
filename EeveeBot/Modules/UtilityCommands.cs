@@ -46,7 +46,7 @@ namespace EeveeBot.Modules
             _eFooter = new EmbedFooterBuilder()
             {
                 IconUrl = Defined.BIG_BOSS_THUMBNAIL,
-                Text = Defined.COPYRIGHTS_MESSAGE
+                Text = Defined.FOOTER_MESSAGE
             };
 
             _eBuilder = new EmbedBuilder
@@ -74,19 +74,19 @@ namespace EeveeBot.Modules
         {
             u = u ?? (SocketGuildUser)Context.User;
 
-            var whitelist = _db.GetCollection<Db_WhitelistUser>("whitelist").FindAll();
+            var whitelist = _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).FindAll();
             if (whitelist.FirstOrDefault(x => x.IsOwner) == null)
             {
                 var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
                 if (tUser == null)
                 {
-                    tUser = new Obj_WhitelistUser(u.Id, true).EncapsulateToDb();
-                    _db.GetCollection<Db_WhitelistUser>("whitelist").Insert(tUser);
+                    tUser = new WhitelistUser(u.Id, true);
+                    _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Insert(tUser);
                 }
                 else
                 {
                     tUser.IsOwner = true;
-                    _db.GetCollection<Db_WhitelistUser>("whitelist").Update(tUser);
+                    _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Update(tUser);
                 }
             }
             else if (whitelist.FirstOrDefault(x => x.IsOwner).Id == Context.User.Id)
@@ -99,23 +99,18 @@ namespace EeveeBot.Modules
                     var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
                     if (tUser == null)
                     {
-                        tUser = new Obj_WhitelistUser(u.Id, true).EncapsulateToDb();
-                        _db.GetCollection<Db_WhitelistUser>("whitelist").Insert(tUser);
+                        tUser = new WhitelistUser(u.Id, true);
+                        _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Insert(tUser);
                     }
                     else
                     {
                         tUser.IsOwner = true;
-                        _db.GetCollection<Db_WhitelistUser>("whitelist").Update(tUser);
+                        _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Update(tUser);
                     }
 
-                    _db.GetCollection<Db_WhitelistUser>("whitelist").Update(currUser);
+                    _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Update(currUser);
                 }
-
-                _eBuilder.WithTitle("Success")
-                    .WithThumbnailUrl(Defined.SUCCESS_THUMBNAIL)
-                    .WithDescription($"Successfully changed the Owner of {_config.Bot_Name}");
-
-                await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+                await Defined.SendSuccessMessage(_eBuilder, Context, $"Successfully changed the Owner of {_config.Bot_Name}");
             }
             else
             {
@@ -142,7 +137,7 @@ namespace EeveeBot.Modules
                     .Where(x => !x.IsDynamic && !string.IsNullOrWhiteSpace(x.Location)))
                     .WithImports("System", "System.Math", "Discord.Commands", "Discord.Net", "Discord.WebSocket",
                     "System.Diagnostics", "System.Threading.Tasks", "System.Reflection", "System.Net", "System.Net.Http", "System.Net.Http.Headers",
-                    "System.Text", "System.Collections.Generic", "System.Linq", "System.Text.RegularExpressions", "System.IO");
+                    "System.Text", "System.Collections.Generic", "System.Linq", "System.Text.RegularExpressions", "System.IO", "EeveeBot.Classes.Database");
 
                 var script = (CSharpScript.Create(code, scriptOptions, globalsType: typeof(EvalGlobals)));
                 _compilsw.Start();
@@ -331,7 +326,7 @@ namespace EeveeBot.Modules
         [Remarks("Whitelisted Users Only")]
         public async Task Eval([Remainder] string code)
         {
-            if (_db.GetCollection<Db_WhitelistUser>("whitelist").Count(x => x.Id == Context.User.Id) > 0)
+            if (_db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Count(x => x.Id == Context.User.Id) > 0)
             {
                 _exesw = new Stopwatch();
                 _compilsw = new Stopwatch();
@@ -396,7 +391,7 @@ namespace EeveeBot.Modules
         [Remarks("Whitelisted Users Only")]
         public async Task RelaunchBotCommand()
         {
-            var whitelist = _db.GetAll<Db_WhitelistUser>("whitelist");
+            var whitelist = _db.GetAll<WhitelistUser>(Defined.WHITELIST_TABLE_NAME);
             DirectoryInfo dInfo = new DirectoryInfo(Directory.GetCurrentDirectory());
             var path = dInfo.Parent.FullName + "\\Executions\\";
 
@@ -420,7 +415,7 @@ namespace EeveeBot.Modules
         [Remarks("Owner Only")]
         public async Task SudoCommand(SocketGuildUser user, [Remainder] string args)
         {
-            var whitelist = _db.GetAll<Db_WhitelistUser>("whitelist");
+            var whitelist = _db.GetAll<WhitelistUser>(Defined.WHITELIST_TABLE_NAME);
 
             if (whitelist.FirstOrDefault(x => x.IsOwner)?.Id == (Context.User).Id)
             {
