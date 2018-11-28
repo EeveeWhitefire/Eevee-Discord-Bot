@@ -22,6 +22,6 @@ namespace EeveeBot.Classes.Database
         }
 
         public override string ToString()
-            => $"{Id} {(IsOwner ? Defined.OWNER_ICON : Defined.WHITELISTED_ICON)}";
+            => Id.ToString();
     }
 }

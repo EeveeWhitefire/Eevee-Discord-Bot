@@ -22,7 +22,8 @@ namespace EeveeBot
         E407, ///invalid length - max
         E408, ///invalid length - free text
         E409, //no whitelisted privilege
-        E410 //no owner privilege
+        E410, //no owner privilege
+        E411 //can't do that on bots
     }
 
     public class Defined
@@ -42,7 +43,9 @@ namespace EeveeBot
         public const string FOOTER_MESSAGE = "EeveeBot made by TalH#6144. Licensed under MIT";
         public const string COPYRIGHTS_MESSAGE = "Copyright © 2018 Tal Hadad. Licensed under MIT";
         public const string DATE_THUMBNAIL = @"https://cdn2.iconfinder.com/data/icons/business-flatcircle/512/calendar-512.png";
-        public const string INVITE_URL = @"https://discordapp.com/oauth2/authorize?client_id=337649506856468491&scope=bot";
+        public const ulong CLIENT_ID = 337649506856468491;
+        public static string INVITE_URL(ulong client_id)
+            => $@"https://discordapp.com/oauth2/authorize?client_id={client_id}&scope=bot";
 
         public const string WHITELIST_TABLE_NAME = "whitelist";
         public const string BLACKLIST_TABLE_NAME = "blacklist";
@@ -52,11 +55,12 @@ namespace EeveeBot
         public const int NICKNAME_LENGTH_MIN = 2;
         public const int EMOTE_RESOLUTION_SIZE = 36;
 
-        public static async Task SendErrorMessage(EmbedBuilder eBuilder, SocketCommandContext Context, 
-            ErrorTypes err, object entity, string type, string src = null)
+        public static void BuildErrorMessage(EmbedBuilder eBuilder, SocketCommandContext Context, 
+            ErrorTypes err, object entity, string type, string src = null, bool overrideinfo = true)
         {
-            eBuilder.WithTitle(err.ErrorToString())
-                .WithThumbnailUrl(ERROR_THUMBNAIL);
+            if(overrideinfo)
+                eBuilder.WithTitle(err.ErrorToString())
+                    .WithThumbnailUrl(ERROR_THUMBNAIL);
 
             switch (err)
             {
@@ -81,20 +85,42 @@ namespace EeveeBot
                 case ErrorTypes.E410:
                     eBuilder.WithDescription($"You must be the Owner in order to {type}"); //type - free text
                     break;
+                case ErrorTypes.E411:
+                    eBuilder.WithDescription($"Bot Users can't {type}."); //type - free text
+                    break;
                 default:
                     break;
             }
-
-            await Context.Channel.SendMessageAsync(string.Empty, embed: eBuilder.Build());
         }
 
-        public static async Task SendSuccessMessage(EmbedBuilder eBuilder, SocketCommandContext Context, string message)
+        public static void BuildSuccessMessage(EmbedBuilder eBuilder, SocketCommandContext Context, string message, bool overrideInfo = true)
         {
-            eBuilder.WithTitle("Success")
-                .WithDescription(message)
+            eBuilder.WithDescription(message)
                 .WithThumbnailUrl(SUCCESS_THUMBNAIL);
 
-            await Context.Channel.SendMessageAsync(string.Empty, embed: eBuilder.Build());
+            if (overrideInfo)
+                eBuilder.WithTitle("Success");
+        }
+    }
+
+    public enum Permissions
+    {
+        Rannick = 69,
+        Blacklisted,
+        Owner,
+        Whitelisted,
+        Regular
+    }
+
+    public class Permission : Attribute
+    {
+        public Permissions Access { get; protected set; } = Permissions.Regular;
+        public Permission()
+        {
+        }
+        public Permission(Permissions perm)
+        {
+            Access = perm;
         }
     }
 
@@ -172,6 +198,17 @@ namespace EeveeBot
             }
             while (c >= 0);
 
+            return str;
+        }
+        
+        public static string MultipleTrimStart(this string str, params string[] strs)
+        {
+            string before = str;
+            foreach (var s in strs)
+            {
+                if (str.StartsWith(s))
+                    str = str.Remove(0, s.Length);
+            }
             return str;
         }
 

@@ -33,9 +33,6 @@ namespace EeveeBot.Modules
         private DatabaseContext _db;
         private JsonManager_Service _jsonMngr;
 
-        private Stopwatch _exesw;
-        private Stopwatch _compilsw;
-
         public UtilityCommands(Config_Json config, DatabaseContext db, JsonManager_Service jsonParser, Random rnd)
         {
             _config = config;
@@ -58,6 +55,7 @@ namespace EeveeBot.Modules
 
         [Command("ping")]
         [Summary("Sends the Response Time and Latency of the Bot's connection")]
+        [Permission]
         public async Task SendPing()
         {
             Stopwatch s = new Stopwatch();
@@ -69,7 +67,7 @@ namespace EeveeBot.Modules
         }
 
         [Command("chown")]
-        [Remarks("Owner Only")]
+        [Permission(Permissions.Owner)]
         public async Task ChangeOwnerCommand([Remainder] SocketGuildUser u = null)
         {
             u = u ?? (SocketGuildUser)Context.User;
@@ -110,262 +108,85 @@ namespace EeveeBot.Modules
 
                     _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Update(currUser);
                 }
-                await Defined.SendSuccessMessage(_eBuilder, Context, $"Successfully changed the Owner of {_config.Bot_Name}");
+                Defined.BuildSuccessMessage(_eBuilder, Context, $"Successfully changed the Owner of {_config.Bot_Name}");
             }
             else
             {
-                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "change the Owner");
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "change the Owner");
             }
+            await ReplyAsync(embed: _eBuilder.Build());
         }
-
-        public class EvalGlobals
+        
+        [Group("evaluation")]
+        [Alias("eval")]
+        [Summary("These commands compile and execute given code as input.")]
+        public class CodeEvaluationCommands : ModuleBase<SocketCommandContext>
         {
-            public SocketCommandContext Context { get; set; }
-            public Config_Json _config { get; set; }
-            public DatabaseContext _db { get; set; }
-        }
+            private EmbedBuilder _eBuilder;
+            private EmbedFooterBuilder _eFooter;
 
-        public async Task EvaluateCSharp(string code)
-        {
-            try
+            private Random _rnd;
+
+            private Config_Json _config;
+            private DatabaseContext _db;
+            private JsonManager_Service _jsonMngr;
+
+            public CodeEvaluationCommands(Config_Json config, DatabaseContext db, JsonManager_Service jsonParser, Random rnd)
             {
-                var globals = new EvalGlobals { Context = Context, _config = _config, _db = _db };
+                _config = config;
+                _db = db;
+                _rnd = rnd;
+                _jsonMngr = jsonParser;
 
-                code = code.Replace("ReplyAsync", "Context.Channel.SendMessageAsync");
-
-                var scriptOptions = ScriptOptions.Default.WithReferences(AppDomain.CurrentDomain.GetAssemblies()
-                    .Where(x => !x.IsDynamic && !string.IsNullOrWhiteSpace(x.Location)))
-                    .WithImports("System", "System.Math", "Discord.Commands", "Discord.Net", "Discord.WebSocket",
-                    "System.Diagnostics", "System.Threading.Tasks", "System.Reflection", "System.Net", "System.Net.Http", "System.Net.Http.Headers",
-                    "System.Text", "System.Collections.Generic", "System.Linq", "System.Text.RegularExpressions", "System.IO", "EeveeBot.Classes.Database");
-
-                var script = (CSharpScript.Create(code, scriptOptions, globalsType: typeof(EvalGlobals)));
-                _compilsw.Start();
-                //counting compilation time
-                script.Compile();
-
-                _compilsw.Stop();
-
-                _exesw.Start();
-                //counting execution time
-                var output = (await script.RunAsync(globals: globals)).ReturnValue.ToString();
-
-                _exesw.Stop();
-
-                output = output ?? "No output";
-
-                MakeEvaluationEmbed("C#", output, _exesw.ElapsedMilliseconds, _compilsw.ElapsedMilliseconds, true);
-            }
-            catch (Exception e)
-            {
-                var output = e.Message;
-                MakeEvaluationEmbed("C#", output, 0, _compilsw.ElapsedMilliseconds, true);
-            }
-        }
-        public async Task EvaluateVisualBasic(string code)
-        {
-            try
-            {
-                await Task.CompletedTask;
-                var globals = new EvalGlobals { Context = Context, _config = _config, _db = _db };
-
-                var scriptOptions = ScriptOptions.Default.WithReferences(AppDomain.CurrentDomain.GetAssemblies()
-                    .Where(x => !x.IsDynamic && !string.IsNullOrWhiteSpace(x.Location)))
-                    .WithImports("System", "System.Math", "DSharpPlus.CommandsNext", "DSharpPlus", "DSharpPlus.Entities",
-                    "System.Diagnostics", "System.Threading.Tasks", "System.Reflection", "System.Net", "System.Net.Http", "System.Net.Http.Headers",
-                    "System.Text", "System.Collections.Generic", "System.Linq", "System.Text.RegularExpressions", "System.IO");
-                //VisualBasicCompilation.Create()
-                _compilsw.Start();
-
-                _compilsw.Stop();
-
-                _exesw.Start();
-                //counting execution time
-                _exesw.Stop();
-
-                //output = output ?? "No output";
-
-                //MakeEvaluationEmbed("VB", output, _exesw.ElapsedMilliseconds, _compilsw.ElapsedMilliseconds, true);
-            }
-            catch (Exception e)
-            {
-                var output = e.Message;
-                MakeEvaluationEmbed("VB", output, 0, _compilsw.ElapsedMilliseconds, true);
-            }
-        }
-
-        IList<Language_Json> GetLanguages()
-        {
-            return new List<Language_Json>()
-                    {
-                        new Language_Json
-                        {
-                            Name = "F#",
-                            RequiresCompilation = true,
-                            Shortcuts = new string[] {"fs", "f#"},
-                            EmulatorPath = @"C:\Program Files (x86)\Microsoft SDKs\F#\4.1\Framework\v4.0\fsc.exe",
-                            Extension = "fs"
-                        }, //f#
-                        new Language_Json
-                        {
-                            Name = "Python",
-                            Shortcuts = new string[] {"py"},
-                            EmulatorPath = @"I:\Python37\python.exe",
-                            Extension = "py"
-                        }, //py
-                    };
-        }
-
-        void MakeEvaluationEmbed(string lng, string output, long exe, long comp, bool success)
-        {
-            _eBuilder.WithTitle($"{lng} | {(success ? "Evaluation Successful!" : "Evaluation Failed")}")
-                .WithDescription($"```{output}```")
-                .WithFooter($"Execution Time: {exe}ms | Compilation Time: {comp}ms");
-        }
-
-        public async Task EvaluateLanguage(string lng, string code)
-        {
-            Process process = new Process();
-            ProcessStartInfo startInfo;
-
-            LanguagesConfig_Json lngs;
-            string lngsConfigPath = $"{_config.Project_Path}\\lngs-config.json";
-            if (!File.Exists(lngsConfigPath))
-            {
-                lngs = new LanguagesConfig_Json()
+                _eFooter = new EmbedFooterBuilder()
                 {
-                    Languages = GetLanguages()
+                    IconUrl = Defined.BIG_BOSS_THUMBNAIL,
+                    Text = Defined.FOOTER_MESSAGE
                 };
-                await _jsonMngr.UpdateJsonAsync(lngs, lngsConfigPath);
-            }
-            else
-            {
-                lngs = await _jsonMngr.GetJsonObjectAsync<LanguagesConfig_Json>(lngsConfigPath);
-            }
 
-            if (lng == "cs" || lng == "c#")
-                await EvaluateCSharp(code);
-            /*else if (lng == "vb")
-                await EvaluateVB(code, Context);*/
-            else if (lngs.Languages.Count(x => x.Shortcuts.Contains(lng)) > 0)
-            {
-                var lang = lngs.Languages.FirstOrDefault(x => x.Shortcuts.Contains(lng));
-
-                int currId = Directory.GetFiles("Code Evaluation").Length;
-
-                string scriptPath = $@"{_config.Project_Path}\Code Evaluation\Scripts\ev{lang.Extension}{currId}.{lang.Extension}";
-                string compiledPath = $@"{_config.Project_Path}\Code Evaluation\Compiled\ev{lang.Extension}{currId}.exe";
-
-                using (StreamWriter writer = new StreamWriter(scriptPath))
+                _eBuilder = new EmbedBuilder
                 {
-                    await writer.WriteAsync(code);
-                }
-
-                startInfo = new ProcessStartInfo()
-                {
-                    FileName = lang.EmulatorPath,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true,
-                    Arguments = $"\"{scriptPath}\""
+                    Color = Defined.Colors[_rnd.Next(Defined.Colors.Length - 1)],
+                    Footer = _eFooter
                 };
-                process.StartInfo = startInfo;
+            }
 
-                _compilsw.Start();
-                process.Start();
-
-                var errors = await process.StandardError.ReadToEndAsync();
-                var output = await process.StandardOutput.ReadToEndAsync();
-
-                process.WaitForExit();
-                _compilsw.Stop();
-                process.Close();
-
-                if (errors == string.Empty)
+            private bool CanEvaluate()
+            {
+                if (!Directory.Exists("Code Evaluation"))
+                    Directory.CreateDirectory("Code Evaluation");
+                if (_db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Count(x => x.Id == Context.User.Id) > 0)
                 {
-                    if (lang.RequiresCompilation)
-                    {
-                        startInfo.FileName = compiledPath;
-                        _exesw.Start();
-                        process.Start();
-                        output = await process.StandardOutput.ReadToEndAsync();
-                        _exesw.Stop();
-                        process.WaitForExit();
-                        process.Close();
-
-                        MakeEvaluationEmbed(lang.Name, output, _exesw.ElapsedMilliseconds, _compilsw.ElapsedMilliseconds, true);
-
-                        try
-                        {
-                            File.Delete(compiledPath);
-                        }
-                        catch (Exception)
-                        { }
-                    }
-                    else
-                    {
-                        MakeEvaluationEmbed(lang.Name, output, _compilsw.ElapsedMilliseconds, _compilsw.ElapsedMilliseconds, true);
-                    }
+                    return true;
                 }
                 else
-                {
-                    MakeEvaluationEmbed(lang.Name, errors, 0, _compilsw.ElapsedMilliseconds, false);
-                }
-                File.Delete(scriptPath);
+                    Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "use the Code Evaluation Command");
+                return false;
             }
-            else
-                _eBuilder.WithTitle("Error")
-                    .WithDescription($"The bot doesn't support the {lng} Language, if it even is one :frowning:")
-                    .WithFooter("git gud");
 
-            process.Dispose();
-        }
-
-        [Command("eval")]
-        [Summary("This command compiles and executes given code as input.")]
-        [Remarks("Whitelisted Users Only")]
-        public async Task Eval([Remainder] string code)
-        {
-            if (_db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Count(x => x.Id == Context.User.Id) > 0)
+            [Command("c#")]
+            [Alias("csharp", "cs")]
+            [Permission(Permissions.Whitelisted)]
+            public async Task CodeEvaluationCommand([Remainder] string code)
             {
-                _exesw = new Stopwatch();
-                _compilsw = new Stopwatch();
-                string lng = string.Empty;
-
-                if (!code.StartsWith('`'))
+                if (CanEvaluate())
                 {
-                    await ReplyAsync("No code block found! C# Assumed");
-                    lng = "cs";
-
-                }
-                else
-                {
-                    if (!Directory.Exists("Code Evaluation"))
-                        Directory.CreateDirectory("Code Evaluation");
-
-                    code = code.TrimStart(' ').TrimEnd(' ')
-                        .TrimStart('`').TrimEnd('`');
-
-                    lng = string.Join(string.Empty, code.Take(3)).ToLower()
-                        .TrimEnd(' ').TrimStart(' ')
-                        .TrimEnd('\n').TrimStart('\n'); ;
-
-                    code = "`" + code;
-                    code = code.Replace("`" + lng, string.Empty)
-                        .TrimEnd('\n').TrimStart('\n');
+                    Languages lng = Languages.CS;
+                    code = code.Between("```", 0);
+                    code = code.MultipleTrimStart("csharp", "cs", "c#").TrimStart(' ');
+                    await LanguageEmulator.EvaluateAsync(_eBuilder, lng, code, Context, _db, _config);
                 }
 
-                await EvaluateLanguage(lng, code);
                 await ReplyAsync(embed: _eBuilder.Build());
             }
-            else
-                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "use the Code Evaluation Command");
         }
+        
 
         
         [Command("clean")]
         [Alias("purge")]
         [Summary("Removes all or a number of messages that the user (this bot = def) has sent!")]
+        [Permission]
         public async Task CleanMessagesCommand(int toDelete = 50)
         {
             var messages = await Context.Channel.GetMessagesAsync(toDelete*2).FlattenAsync();
@@ -388,7 +209,7 @@ namespace EeveeBot.Modules
         [Command("relaunch")]
         [Alias("rel", "reset", "restart", "reboot")]
         [Summary("Restarts the bot!")]
-        [Remarks("Whitelisted Users Only")]
+        [Permission(Permissions.Whitelisted)]
         public async Task RelaunchBotCommand()
         {
             var whitelist = _db.GetAll<WhitelistUser>(Defined.WHITELIST_TABLE_NAME);
@@ -404,25 +225,72 @@ namespace EeveeBot.Modules
                 };
 
                 await Task.Run(() => Process.Start(ProcessInfo));
-                Environment.Exit(1);
+                await Context.Client.LogoutAsync();
+                Environment.Exit(0);
             }
             else
-                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, $"relaunch {_config.Bot_Name}");
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, $"relaunch {_config.Bot_Name}");
+            await ReplyAsync(embed: _eBuilder.Build());
         }
 
         [Command("sudo")]
         [Summary("You know what it means...")]
-        [Remarks("Owner Only")]
+        [Permission(Permissions.Owner)]
         public async Task SudoCommand(SocketGuildUser user, [Remainder] string args)
         {
             var whitelist = _db.GetAll<WhitelistUser>(Defined.WHITELIST_TABLE_NAME);
 
-            if (whitelist.FirstOrDefault(x => x.IsOwner)?.Id == (Context.User).Id)
+            if (!_db.Exists<WhitelistUser>(Defined.WHITELIST_TABLE_NAME, (x => x.IsOwner && x.Id ==  Context.User.Id)))
             {
-                await Task.CompletedTask;
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "use the Sudo Command");
+                await ReplyAsync(embed: _eBuilder.Build());
             }
             else
-                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "use the Sudo Command");
+            {
+                var context = new SudoCommandContext(Context.Client, Context.Guild, Context.Channel, user, null);
+            }
+        }
+
+        [Command("quit")]
+        [Summary("The bot will quit")]
+        [Permission(Permissions.Owner)]
+        public async Task QuitCommand()
+        {
+            var whitelist = _db.GetAll<WhitelistUser>(Defined.WHITELIST_TABLE_NAME);
+
+            if (!_db.Exists<WhitelistUser>(Defined.WHITELIST_TABLE_NAME, (x => x.IsOwner && x.Id == Context.User.Id)))
+            {
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "use the Quit Command");
+                await ReplyAsync(embed: _eBuilder.Build());
+            }
+            else
+            {
+                await Context.Client.LogoutAsync();
+                Environment.Exit(0);
+            }
+        }
+
+
+        class SudoCommandContext : ICommandContext
+        {
+            public IDiscordClient Client { get; protected set; }
+
+            public IGuild Guild { get; protected set; }
+
+            public IMessageChannel Channel { get; protected set; }
+
+            public IUser User { get; protected set; }
+
+            public IUserMessage Message { get; protected set; }
+
+            public SudoCommandContext(IDiscordClient client, IGuild g, IMessageChannel ch, IUser u, IUserMessage msg)
+            {
+                Client = client;
+                Guild = g;
+                Message = msg;
+                User = u;
+                Channel = ch;
+            }
         }
     }
 }

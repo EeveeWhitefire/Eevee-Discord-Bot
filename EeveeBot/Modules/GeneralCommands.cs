@@ -54,6 +54,7 @@ namespace EeveeBot.Modules
 
         [Command("botinfo")]
         [Alias("info", "binfo")]
+        [Permission]
         public async Task SendBotInfo()
         {
             string privateMemory;
@@ -83,6 +84,7 @@ namespace EeveeBot.Modules
         [Command("userinfo")]
         [Alias("uinfo")]
         [Summary("Sends the User Info of the specified user")]
+        [Permission]
         public async Task UserInfoCommand([Remainder] SocketGuildUser u = null)
         {
             u = u ?? (SocketGuildUser)Context.User;
@@ -96,12 +98,13 @@ namespace EeveeBot.Modules
                 .AddField("__Is Bot?__", u.IsBot.ToString(), true)
                 .WithThumbnailUrl(u.GetAvatarUrl());
 
-            await Context.Channel.SendMessageAsync(string.Empty, embed: _eBuilder.Build());
+            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
 
         [Command("guildinfo")]
         [Alias("ginfo")]
         [Summary("Sends the Guild Info of the specified user")]
+        [Permission]
         public async Task GuildInfoCommand()
         {
             var g = Context.Guild;
@@ -115,20 +118,23 @@ namespace EeveeBot.Modules
                 .AddField("__Text Channels__", g.TextChannels.Count() > 0 ? string.Join(" | ", g.TextChannels.Select(x => x.Mention)) : "None", true)
                 .WithThumbnailUrl(g.IconUrl);
 
-            await Context.Channel.SendMessageAsync(string.Empty, embed: _eBuilder.Build());
+            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
-
-        [Command("invite")]
-        [Alias("invitelink", "inv", "invlink")]
-        public async Task SendInvitationLinkCommand()
+        
+        [Command("genbotinv")]
+        [Alias("generatebotinv", "generatebotinvitatio", "genbotinvitation")]
+        [Permission]
+        public async Task GenerateBotInvitationUrlCommand(ulong client_id = Defined.CLIENT_ID)
         {
-            _eBuilder.WithTitle($"{_config.Bot_Name}'s Invite Link")
-                .WithUrl(Defined.INVITE_URL)
-                .AddField(x =>
-                {
-                    x.Name = "__Url__";
-                    x.Value = Defined.INVITE_URL;
-                });
+            var res = Defined.INVITE_URL(client_id);
+            if (client_id == Defined.CLIENT_ID)
+            {
+                _eBuilder.WithTitle($"{_config.Bot_Name}'s Invite Link");
+            }
+            else
+                _eBuilder.WithTitle("Result");
+            _eBuilder.WithDescription(res)
+                .WithUrl(res);
 
             await ReplyAsync(string.Empty, embed: _eBuilder.Build());
         }
@@ -136,6 +142,7 @@ namespace EeveeBot.Modules
         [Command("ud")]
         [Alias("urbandictionary")]
         [Summary("Sends the meaning of the given input from Urban Dictionary!")]
+        [Permission]
         public async Task UrbanDictionaryCommand(string input, int num = 1)
         {
             Uri url = new Uri($"http://api.urbandictionary.com/v0/define?term={input}");
@@ -170,14 +177,15 @@ namespace EeveeBot.Modules
             }
         }
 
-        [Command("say")]
-        [Alias("send")]
+        [Command("echo")]
+        [Alias("send", "say")]
         [Summary("Sends the given Text to the specified Channel")]
+        [Permission]
         public async Task SendText(SocketTextChannel channel, [Remainder] string text)
         {
             await channel.SendMessageAsync(text);
         }
-        [Command("say")]
+        [Command("echo")]
         public async Task SendText([Remainder] string text)
         {
             await ReplyAsync(text);
@@ -186,6 +194,7 @@ namespace EeveeBot.Modules
         [Command("minecraftavatar")]
         [Alias("mcavatar")]
         [Summary("Sends the Minecraft Avatar of the specified Player")]
+        [Permission]
         public async Task SendMinecraftSkin(string username)
         {
             string url = $@"https://visage.surgeplay.com/full/512/{username}";
@@ -199,6 +208,7 @@ namespace EeveeBot.Modules
 
         [Command("date")]
         [Alias("currdate")]
+        [Permission]
         public async Task SendTimeInFuturistic()
         {
             _eBuilder.WithTitle("Current Date")
@@ -230,7 +240,7 @@ namespace EeveeBot.Modules
                 .AddField(x =>
                 {
                     x.Name = "__Summary__";
-                    x.Value = $"**{(command.Summary ?? "No Summary")}**\n{(command.Remarks ?? "Public Permission")}.";
+                    x.Value = $"**{(command.Summary ?? "No Summary")}**.";
                     x.IsInline = false;
                 })
                 .AddField(x =>
@@ -284,6 +294,8 @@ namespace EeveeBot.Modules
 
 
         [Command("help")]
+        [Summary("Sends the available modules and their commands.")]
+        [Permission]
         public async Task SendHelpCommand([Remainder] string arg = null)
         {
             _eBuilder.WithThumbnailUrl(Defined.COOKIE_THUMBNAIL);
@@ -322,10 +334,27 @@ namespace EeveeBot.Modules
                         await PrepareHelp(command);
                     else
                     {
-                        await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, arg, "Command", _config.Bot_Name);
+                        Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E404, arg, "Command", _config.Bot_Name);
                     }
                 }
             }
         }
+
+        /* Wait till able to get bot owner
+        [Command("bots")]
+        [Summary("Sends a list of the bots in a specific guild.")]
+        public async Task SendBotsListCommand([Remainder] SocketGuild g = null)
+        {
+            g = g ?? Context.Guild;
+
+            _eBuilder.WithTitle($"{g.Name} Guild => Bot Users")
+                .WithThumbnailUrl(g.IconUrl);
+            Context.Client.CurrentUser.
+
+            foreach (var item in g.Users.Where( x => x.IsBot).Select(x => x as I)
+            {
+
+            }
+        }*/
     }
 }

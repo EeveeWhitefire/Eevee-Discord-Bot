@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Linq.Expressions;
 
 using Discord;
 using Discord.Commands;
@@ -11,7 +12,6 @@ using Discord.WebSocket;
 using EeveeBot.Classes;
 using EeveeBot.Classes.Database;
 using EeveeBot.Classes.Json;
-using System.Linq.Expressions;
 
 namespace EeveeBot.Modules
 {
@@ -48,13 +48,13 @@ namespace EeveeBot.Modules
 
         [Command("add")]
         [Alias("whiten")]
+        [Permission(Permissions.Owner)]
         public async Task WhitenUserCommand([Remainder] SocketGuildUser u = null)
         {
             u = u ?? (SocketGuildUser)Context.User;
-            if (u.Id == _config.Client_Id)
+            if (u.IsBot)
             {
-                await ReplyAsync($"You can't whitelist {_config.Bot_Name} for itself smh");
-                await Task.CompletedTask;
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E411, null, "added to the Whitelist");
             }
             else
             {
@@ -67,15 +67,17 @@ namespace EeveeBot.Modules
                             _db.DeleteEntity<BlacklistUser>(Defined.BLACKLIST_TABLE_NAME, (x => x.Id == Context.User.Id));
                     }
 
-                    await Defined.SendSuccessMessage(_eBuilder, Context, $"Successfully added the User **{u.Username}#{u.Discriminator}** to the Whitelist");
+                    Defined.BuildSuccessMessage(_eBuilder, Context, $"Successfully added the User **{u.Username}#{u.Discriminator}** to the Whitelist");
                 }
                 else
-                    await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "add a User to the Whitelist");
+                    Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "add a User to the Whitelist");
             }
+            await ReplyAsync(embed: _eBuilder.Build());
         }
 
         [Command("delete")]
         [Alias("remove", "del", "rem")]
+        [Permission(Permissions.Owner)]
         public async Task DeWhitenUserCommand([Remainder] SocketGuildUser u = null)
         {
             u = u ?? (SocketGuildUser)Context.User;
@@ -90,20 +92,22 @@ namespace EeveeBot.Modules
                     if(target.Id == caller.Id || caller.IsOwner)
                     {
                         _db.DeleteEntity<WhitelistUser>(Defined.WHITELIST_TABLE_NAME, (x => x.Id == u.Id));
-                        await Defined.SendSuccessMessage(_eBuilder, Context, $"Successfully removed the User **{u.Username}#{u.Discriminator}** from the Whitelist");
+                        Defined.BuildSuccessMessage(_eBuilder, Context, $"Successfully removed the User **{u.Username}#{u.Discriminator}** from the Whitelist");
                     }
                     else
-                        await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "remove a User who isn't yourself from the Whitelist");
+                        Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "remove a User who isn't yourself from the Whitelist");
                 }
                 else
-                    await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, $"{u.Username}#{u.Discriminator}", "User", "the Whitelist");
+                    Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E404, $"{u.Username}#{u.Discriminator}", "User", "the Whitelist");
             }
             else
-                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "remove a User from the Whitelist");
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "remove a User from the Whitelist");
+            await ReplyAsync(embed: _eBuilder.Build());
         }
 
         [Command("list")]
         [Alias("show", "showlist")]
+        [Permission]
         public async Task ShowWhitelistCommand()
         {
             var whitelist = _db.GetAll<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).OrderByDescending( x => x.IsOwner);
@@ -125,7 +129,7 @@ namespace EeveeBot.Modules
                         {
                             _eBuilder.AddField(x =>
                             {
-                                x.Name = $"__{guildUser.Nickname ?? guildUser.Username}__";
+                                x.Name = $"{(u.IsOwner ? Defined.OWNER_ICON : Defined.WHITELISTED_ICON)} {guildUser.Nickname ?? guildUser.Username}";
                                 x.Value = u.ToString();
                                 x.IsInline = false;
                             });
@@ -135,7 +139,7 @@ namespace EeveeBot.Modules
                             var user = Context.Client.GetUser(u.Id);
                             _eBuilder.AddField(x =>
                             {
-                                x.Name = $"__{user.Username}#{user.Discriminator}__";
+                                x.Name = $"{(u.IsOwner ? Defined.OWNER_ICON : Defined.WHITELISTED_ICON)} {user.Username}#{user.Discriminator}";
                                 x.Value = u.ToString();
                                 x.IsInline = false;
                             });
@@ -185,13 +189,13 @@ namespace EeveeBot.Modules
 
         [Command("add")]
         [Alias("blacken")]
+        [Permission(Permissions.Whitelisted)]
         public async Task BlackenUserCommand([Remainder] SocketGuildUser u = null)
         {
             u = u ?? (SocketGuildUser)Context.User;
-            if (u.Id == _config.Client_Id)
+            if (u.IsBot)
             {
-                await ReplyAsync($"You can't blacklist {_config.Bot_Name} for itself smh");
-                await Task.CompletedTask;
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E411, null, "added to the Blacklist");
             }
             else
             {
@@ -203,20 +207,22 @@ namespace EeveeBot.Modules
                         if (_db.Exists<WhitelistUser>(Defined.WHITELIST_TABLE_NAME, (x => x.Id == u.Id)))
                             _db.DeleteEntity<WhitelistUser>(Defined.WHITELIST_TABLE_NAME, (x => x.Id == u.Id));
                     }
-                    await Defined.SendSuccessMessage(_eBuilder, Context, $"Successfully added the User **{u.Username}#{u.Discriminator}** to the Blacklist");
+                    Defined.BuildSuccessMessage(_eBuilder, Context, $"Successfully added the User **{u.Username}#{u.Discriminator}** to the Blacklist");
                 }
                 else
-                    await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "add a User to the Blacklist");
+                    Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "add a User to the Blacklist");
             }
+            await ReplyAsync(embed: _eBuilder.Build());
         }
 
         [Command("delete")]
         [Alias("remove", "del", "rem")]
+        [Permission(Permissions.Owner)]
         public async Task DeBlackenUserCommand([Remainder] SocketGuildUser u = null)
         {
             u = u ?? (SocketGuildUser)Context.User;
 
-            var caller = _db.FirstOrDefault<WhitelistUser>(Defined.WHITELIST_TABLE_NAME, (x => x.Id == Context.User.Id));
+            var caller = _db.FirstOrDefault<WhitelistUser>(Defined.WHITELIST_TABLE_NAME, (x => x.Id == Context.User.Id && x.IsOwner));
             var target = _db.FirstOrDefault<BlacklistUser>(Defined.BLACKLIST_TABLE_NAME, (x => x.Id == u.Id));
 
             if (caller != null)
@@ -224,17 +230,19 @@ namespace EeveeBot.Modules
                 if (target != null)
                 {
                     _db.DeleteEntity<BlacklistUser>(Defined.BLACKLIST_TABLE_NAME, (x => x.Id == u.Id));
-                    await Defined.SendSuccessMessage(_eBuilder, Context, $"Successfully removed the User **{u.Username}#{u.Discriminator}** from the Blacklist");
+                    Defined.BuildSuccessMessage(_eBuilder, Context, $"Successfully removed the User **{u.Username}#{u.Discriminator}** from the Blacklist");
                 }
                 else
-                    await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E404, $"{u.Username}#{u.Discriminator}", "User", "the Blacklist");
+                    Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E404, $"{u.Username}#{u.Discriminator}", "User", "the Blacklist");
             }
             else
-                await Defined.SendErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "remove a User from the Blacklist");
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "remove a User from the Blacklist");
+            await ReplyAsync(embed: _eBuilder.Build());
         }
 
         [Command("list")]
         [Alias("show", "showlist")]
+        [Permission]
         public async Task ShowBlacklistCommand()
         {
             var blacklist = _db.GetAll<BlacklistUser>(Defined.BLACKLIST_TABLE_NAME);
@@ -256,7 +264,7 @@ namespace EeveeBot.Modules
                         {
                             _eBuilder.AddField(x =>
                             {
-                                x.Name = $"__{guildUser.Nickname ?? guildUser.Username}__";
+                                x.Name = $"{guildUser.Nickname ?? guildUser.Username}";
                                 x.Value = u.ToString();
                                 x.IsInline = false;
                             });
@@ -266,7 +274,7 @@ namespace EeveeBot.Modules
                             var user = Context.Client.GetUser(u.Id);
                             _eBuilder.AddField(x =>
                             {
-                                x.Name = $"__{user.Username}#{user.Discriminator}__";
+                                x.Name = $"{user.Username}#{user.Discriminator}";
                                 x.Value = u.ToString();
                                 x.IsInline = false;
                             });

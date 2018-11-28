@@ -73,8 +73,7 @@ namespace EeveeBot
             _dClient = new DiscordSocketClient(_dConfig);
             _dClient.Log += Log;
             #endregion
-
-
+            
             #region Commands Next Initialization
             _cmdServiceConfig = new CommandServiceConfig()
             {
