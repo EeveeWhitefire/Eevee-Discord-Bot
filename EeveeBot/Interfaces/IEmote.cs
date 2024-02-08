@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-using EeveeBot.Classes.Database;
-
-namespace EeveeBot.Interfaces
+﻿namespace EeveeBot.Interfaces
 {
     public interface IEeveeEmote
     {
@@ -14,8 +8,6 @@ namespace EeveeBot.Interfaces
         string Name { get; }
         string RelativePath { get; }
         bool IsAnimated { get; }
-        bool IsDefault { get; }
-        List<EeveeEmoteAlias> Aliases { get; }
         string Url { get; }
     }
 }

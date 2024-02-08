@@ -17,6 +17,7 @@ using EeveeBot.Classes;
 using EeveeBot.Classes.Database;
 using EeveeBot.Classes.Services;
 using EeveeBot.Classes.Json;
+using Microsoft.EntityFrameworkCore;
 
 namespace EeveeBot.Modules
 {
@@ -24,33 +25,17 @@ namespace EeveeBot.Modules
     [Summary("Utility commands like purge or memory.")]
     public class UtilityCommands : ModuleBase<SocketCommandContext>
     {
-        private EmbedBuilder _eBuilder;
-        private EmbedFooterBuilder _eFooter;
-        
-        private Random _rnd;
+        private readonly EeveeEmbed _eBuilder;
+        private readonly Config_Json _config;
+        private readonly DatabaseRepository _db;
+        private readonly BotLogic _instance;
 
-        private Config_Json _config;
-        private DatabaseContext _db;
-        private JsonManager_Service _jsonMngr;
-
-        public UtilityCommands(Config_Json config, DatabaseContext db, JsonManager_Service jsonParser, Random rnd)
+        public UtilityCommands(EeveeEmbed eBuilder, Config_Json config, DatabaseRepository db, BotLogic p)
         {
+            _eBuilder = eBuilder;
             _config = config;
             _db = db;
-            _rnd = rnd;
-            _jsonMngr = jsonParser;
-
-            _eFooter = new EmbedFooterBuilder()
-            {
-                IconUrl = Defined.BIG_BOSS_THUMBNAIL,
-                Text = Defined.FOOTER_MESSAGE
-            };
-
-            _eBuilder = new EmbedBuilder
-            {
-                Color = Defined.Colors[_rnd.Next(Defined.Colors.Length - 1)],
-                Footer = _eFooter
-            };
+            _instance = p;
         }
 
         [Command("ping")]
@@ -59,11 +44,13 @@ namespace EeveeBot.Modules
         public async Task SendPing()
         {
             Stopwatch s = new Stopwatch();
+
             s.Start();
-            var msg = await ReplyAsync("Calculating ping");
+            var msg = await ReplyAsync("Calculating ping ...");
             s.Stop();
-            await msg.ModifyAsync(x => x.Content = $"Response Time: **{s.ElapsedMilliseconds}ms**\n" +
-            $"Latency: **{Context.Client.Latency}ms**");
+
+            await msg.ModifyAsync(x => x.Embed = _eBuilder.WithTitle("Ping Calculation").WithDescription($"Response Time: **{s.ElapsedMilliseconds}ms**\n" +
+                $"Latency: **{Context.Client.Latency}ms**").Build());
         }
 
         [Command("chown")]
@@ -72,95 +59,45 @@ namespace EeveeBot.Modules
         {
             u = u ?? (SocketGuildUser)Context.User;
 
-            var whitelist = _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).FindAll();
-            if (whitelist.FirstOrDefault(x => x.IsOwner) == null)
+            if(_db.CanChangeOwner(Context.User.Id))
             {
-                var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
-                if (tUser == null)
-                {
-                    tUser = new WhitelistUser(u.Id, true);
-                    _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Insert(tUser);
-                }
-                else
-                {
-                    tUser.IsOwner = true;
-                    _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Update(tUser);
-                }
-            }
-            else if (whitelist.FirstOrDefault(x => x.IsOwner).Id == Context.User.Id)
-            {
-                if (u.Id != Context.User.Id)
-                {
-                    var currUser = whitelist.FirstOrDefault(x => x.Id == Context.User.Id);
-                    currUser.IsOwner = false;
+                await _db.ChangeOwnerAsync(u.Id, Context.User.Id);
 
-                    var tUser = whitelist.FirstOrDefault(x => x.Id == u.Id);
-                    if (tUser == null)
-                    {
-                        tUser = new WhitelistUser(u.Id, true);
-                        _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Insert(tUser);
-                    }
-                    else
-                    {
-                        tUser.IsOwner = true;
-                        _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Update(tUser);
-                    }
-
-                    _db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Update(currUser);
-                }
                 Defined.BuildSuccessMessage(_eBuilder, Context, $"Successfully changed the Owner of {_config.Bot_Name}");
             }
             else
-            {
-                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "change the Owner");
-            }
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, type: "change the Owner (unless there is no Owner)");
+
             await ReplyAsync(embed: _eBuilder.Build());
+
+            _db.Dispose();
         }
         
-        [Group("evaluation")]
+        [Group("Evaluation")]
         [Alias("eval")]
         [Summary("These commands compile and execute given code as input.")]
         public class CodeEvaluationCommands : ModuleBase<SocketCommandContext>
         {
-            private EmbedBuilder _eBuilder;
-            private EmbedFooterBuilder _eFooter;
+            private readonly EeveeEmbed _eBuilder;
+            private readonly Config_Json _config;
+            private readonly DatabaseRepository _db;
 
-            private Random _rnd;
-
-            private Config_Json _config;
-            private DatabaseContext _db;
-            private JsonManager_Service _jsonMngr;
-
-            public CodeEvaluationCommands(Config_Json config, DatabaseContext db, JsonManager_Service jsonParser, Random rnd)
+            public CodeEvaluationCommands(EeveeEmbed eBuilder,  Config_Json config, DatabaseRepository db)
             {
+                _eBuilder = eBuilder;
                 _config = config;
                 _db = db;
-                _rnd = rnd;
-                _jsonMngr = jsonParser;
-
-                _eFooter = new EmbedFooterBuilder()
-                {
-                    IconUrl = Defined.BIG_BOSS_THUMBNAIL,
-                    Text = Defined.FOOTER_MESSAGE
-                };
-
-                _eBuilder = new EmbedBuilder
-                {
-                    Color = Defined.Colors[_rnd.Next(Defined.Colors.Length - 1)],
-                    Footer = _eFooter
-                };
             }
 
             private bool CanEvaluate()
             {
                 if (!Directory.Exists("Code Evaluation"))
                     Directory.CreateDirectory("Code Evaluation");
-                if (_db.GetCollection<WhitelistUser>(Defined.WHITELIST_TABLE_NAME).Count(x => x.Id == Context.User.Id) > 0)
-                {
+                if (_db.IsWhitelisted(Context.User.Id))
                     return true;
-                }
                 else
-                    Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, "use the Code Evaluation Command");
+                    Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E409, type: "use the Code Evaluation Command");
+
                 return false;
             }
 
@@ -174,15 +111,16 @@ namespace EeveeBot.Modules
                     Languages lng = Languages.CS;
                     code = code.Between("```", 0);
                     code = code.MultipleTrimStart("csharp", "cs", "c#").TrimStart(' ');
+
                     await LanguageEmulator.EvaluateAsync(_eBuilder, lng, code, Context, _db, _config);
                 }
 
                 await ReplyAsync(embed: _eBuilder.Build());
+
+                _db.Dispose();
             }
         }
-        
 
-        
         [Command("clean")]
         [Alias("purge")]
         [Summary("Removes all or a number of messages that the user (this bot = def) has sent!")]
@@ -212,85 +150,32 @@ namespace EeveeBot.Modules
         [Permission(Permissions.Whitelisted)]
         public async Task RelaunchBotCommand()
         {
-            var whitelist = _db.GetAll<WhitelistUser>(Defined.WHITELIST_TABLE_NAME);
-            DirectoryInfo dInfo = new DirectoryInfo(Directory.GetCurrentDirectory());
-            var path = dInfo.Parent.FullName + "\\Executions\\";
-
-            if (whitelist.FirstOrDefault(x => x.Id == (Context.User).Id) != null)
-            {
-                ProcessStartInfo ProcessInfo = new ProcessStartInfo($"{path}Run {_config.Bot_Name}.bat")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = false
-                };
-
-                await Task.Run(() => Process.Start(ProcessInfo));
-                await Context.Client.LogoutAsync();
-                Environment.Exit(0);
-            }
+            if (_db.IsWhitelisted(Context.User.Id))
+                _instance.Reboot();
             else
-                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E409, null, $"relaunch {_config.Bot_Name}");
-            await ReplyAsync(embed: _eBuilder.Build());
-        }
-
-        [Command("sudo")]
-        [Summary("You know what it means...")]
-        [Permission(Permissions.Owner)]
-        public async Task SudoCommand(SocketGuildUser user, [Remainder] string args)
-        {
-            var whitelist = _db.GetAll<WhitelistUser>(Defined.WHITELIST_TABLE_NAME);
-
-            if (!_db.Exists<WhitelistUser>(Defined.WHITELIST_TABLE_NAME, (x => x.IsOwner && x.Id ==  Context.User.Id)))
             {
-                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "use the Sudo Command");
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E409, type: $"relaunch {_config.Bot_Name}");
                 await ReplyAsync(embed: _eBuilder.Build());
             }
-            else
-            {
-                var context = new SudoCommandContext(Context.Client, Context.Guild, Context.Channel, user, null);
-            }
+
+            _db.Dispose();
         }
+
 
         [Command("quit")]
         [Summary("The bot will quit")]
         [Permission(Permissions.Owner)]
         public async Task QuitCommand()
         {
-            var whitelist = _db.GetAll<WhitelistUser>(Defined.WHITELIST_TABLE_NAME);
-
-            if (!_db.Exists<WhitelistUser>(Defined.WHITELIST_TABLE_NAME, (x => x.IsOwner && x.Id == Context.User.Id)))
-            {
-                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, null, "use the Quit Command");
-                await ReplyAsync(embed: _eBuilder.Build());
-            }
+            if (_db.IsWhitelisted(Context.User.Id))
+                _instance.StopBot();
             else
             {
-                await Context.Client.LogoutAsync();
-                Environment.Exit(0);
+                Defined.BuildErrorMessage(_eBuilder, Context, ErrorTypes.E410, type: "use the Quit Command");
+                await ReplyAsync(embed: _eBuilder.Build());
             }
-        }
 
-
-        class SudoCommandContext : ICommandContext
-        {
-            public IDiscordClient Client { get; protected set; }
-
-            public IGuild Guild { get; protected set; }
-
-            public IMessageChannel Channel { get; protected set; }
-
-            public IUser User { get; protected set; }
-
-            public IUserMessage Message { get; protected set; }
-
-            public SudoCommandContext(IDiscordClient client, IGuild g, IMessageChannel ch, IUser u, IUserMessage msg)
-            {
-                Client = client;
-                Guild = g;
-                Message = msg;
-                User = u;
-                Channel = ch;
-            }
+            _db.Dispose();
         }
     }
 }

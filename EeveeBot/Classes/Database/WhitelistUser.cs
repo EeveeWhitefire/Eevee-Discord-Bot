@@ -1,16 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-using LiteDB;
-
-using EeveeBot.Interfaces;
+﻿using EeveeBot.Interfaces;
+using System.ComponentModel.DataAnnotations;
 
 namespace EeveeBot.Classes.Database
 {
     public class WhitelistUser : IUser
     {
-        [BsonId]
+        [Key]
+        [ConcurrencyCheck]
         public ulong Id { get; set; }
         public bool IsOwner { get; set; } = false;
         
@@ -23,5 +19,10 @@ namespace EeveeBot.Classes.Database
 
         public override string ToString()
             => Id.ToString();
+
+        public void ToggleIsOwner()
+        {
+            IsOwner = !IsOwner;
+        }
     }
 }

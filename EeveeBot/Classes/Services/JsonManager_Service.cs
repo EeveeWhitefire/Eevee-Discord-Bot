@@ -11,11 +11,11 @@ using System.Net.Http;
 
 namespace EeveeBot.Classes.Services
 {
-    public class JsonManager_Service
+    public class JsonWrapper_Service
     {
         public string ConfigPath { get; protected set; }
 
-        public JsonManager_Service(string cnfgPath)
+        public JsonWrapper_Service(string cnfgPath)
         {
             ConfigPath = cnfgPath;
             if(!File.Exists(ConfigPath))
@@ -77,8 +77,7 @@ namespace EeveeBot.Classes.Services
                 using (HttpClient httpClient = new HttpClient())
                 {
                     string jsonRaw = await httpClient.GetStringAsync(uri);
-                    T obj = JsonConvert.DeserializeObject<T>(jsonRaw);
-                    return obj;
+                    return GetJsonObjectFromString<T>(jsonRaw);
                 }
             }
             catch (Exception e)

@@ -11,11 +11,6 @@ namespace EeveeBot.Classes.Json
         public string[] Prefixes { get; set; } = new string[] { "ev!" };
         public ulong Client_Id { get; set; } = 337649506856468491;
         public ulong[] Private_Guilds { get; set; } = new ulong[] { 452502455897292820, 452502303639994368, 452502558959861760 };
-        private string _projectPath { get; set; }
-        public string Project_Path
-        {
-            get => _projectPath;
-            set => _projectPath = value.Replace("%Sync%", Environment.GetEnvironmentVariable("Sync"));
-        }
+        public string Project_Directory { get; set; }
     }
 }

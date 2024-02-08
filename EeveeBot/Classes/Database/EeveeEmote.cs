@@ -5,71 +5,65 @@ using System.Linq;
 
 using Discord;
 
-using LiteDB;
-
 using EeveeBot.Interfaces;
+using System.ComponentModel.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Threading.Tasks;
 
 namespace EeveeBot.Classes.Database
 {
     public class EeveeEmoteAlias
     {
-        public ulong AssociatedEmoteId { get; set; }
-        public string Alias { get; set; }
+        public ulong Id { get; set; }
+        public ulong EmoteId { get; set; }
         public ulong OwnerId { get; set; }
+        public string Alias { get; set; }
     }
 
     public class EeveeEmote : IEeveeEmote
     {
-        [BsonId]
+        [Key]
+        [ConcurrencyCheck]
         public ulong Id { get; set; }
         public ulong AdderId { get; set; }
         public ulong GuildId { get; set; }
         public string Name { get; set; }
         public bool IsAnimated { get; set; } = false;
-        public bool IsDefault { get; set; } = false;
-        public List<EeveeEmoteAlias> Aliases { get; set; } = new List<EeveeEmoteAlias>();
         public string RelativePath { get; set; }
         public string Url { get; set; }
 
-        public EeveeEmote() { }
+        public List<EeveeEmoteAlias> Aliases { get; private set; }
 
-        public EeveeEmote(ulong id, ulong adderId, ulong guildId, string n, bool isAnimated, bool isDef, string url, List<EeveeEmoteAlias> names = null)
+        public EeveeEmote()
         {
-            Name = n;
-            Id = id;
-            AdderId = adderId;
-            IsDefault = isDef;
-            GuildId = guildId;
-            IsAnimated = isAnimated;
-            RelativePath = $@"Emotes\{Id}{(IsAnimated ? ".gif" : ".png")}";
-            Url = url;
-            Aliases = names ?? new List<EeveeEmoteAlias>();
+            Aliases = new List<EeveeEmoteAlias>();
         }
 
-        public EeveeEmote(GuildEmote em, ulong guildId, ulong adderId, bool isDef) : this(em.Id, adderId, guildId, em.Name, em.Animated, isDef, em.Url)
+        public EeveeEmote(ulong id, ulong adderId, ulong guildId, string n, bool isAnimated, string url)
+        {
+            Id = id;
+            AdderId = adderId;
+            GuildId = guildId;
+            Name = n;
+            IsAnimated = isAnimated;
+            Url = url;
+            RelativePath = $@"Emotes\{Id}{(IsAnimated ? ".gif" : ".png")}";
+        }
+
+        public EeveeEmote(GuildEmote em, ulong guildId, ulong adderId) : this(em.Id, adderId, guildId, em.Name, em.Animated, em.Url)
         { }
 
         public override string ToString()
             => $"<{(IsAnimated ? "a" : string.Empty)}:{Name}:{Id}>";
 
-        public bool TryAssociation(string name, ulong ownerId)
-            => GetAllNamesLowered(ownerId).Contains(name.ToLower());
-
-        public IEnumerable<string> GetAllNames(ulong ownerId)
+        public async Task<bool> TryAssociate(ulong userId, string input)
         {
-            List<string> list = new List<string>
-            {
-                $"{Name}#{AdderId}"
-            };
+            if (input.Count(x => x == ':') == 2)
+                input = input.Between(':', 1);
 
-            if (IsDefault || ownerId == AdderId)
-                list.Add(Name);
-
-            list.AddRange(Aliases.Where(x => x.OwnerId == ownerId).Select(x => x.Alias));
-            return list;
+            await Task.CompletedTask;
+            return Name.EqualsCaseInsensitive(input) || Aliases.Exists(x => x.OwnerId == userId && x.Alias.EqualsCaseInsensitive(input));
         }
-
-        public IEnumerable<string> GetAllNamesLowered(ulong ownerId)
-            => GetAllNames(ownerId).Select(x => x.ToLower());
     }
 }

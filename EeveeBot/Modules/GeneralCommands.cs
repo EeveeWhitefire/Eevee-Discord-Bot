@@ -1,19 +1,13 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 using System.Threading.Tasks;
 using System.Linq;
-using System.Reflection;
+using System.Diagnostics;
 
-using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 
-using EeveeBot.Classes;
-using EeveeBot.Classes.Database;
 using EeveeBot.Classes.Services;
 using EeveeBot.Classes.Json;
-using System.Diagnostics;
 
 namespace EeveeBot.Modules
 {
@@ -21,35 +15,17 @@ namespace EeveeBot.Modules
     [Summary("General commands like say, send, uinfo")]
     public class GeneralCommands : ModuleBase<SocketCommandContext>
     {
-        private EmbedBuilder _eBuilder;
-        private EmbedFooterBuilder _eFooter;
+        private readonly EeveeEmbed _eBuilder;
+        private readonly CommandService _cmdService;
+        private readonly Config_Json _config;
+        private readonly JsonWrapper_Service _jsonWrapper;
 
-        private DatabaseContext _db;
-
-        private CommandService _cmdService;
-        private Config_Json _config;
-        private JsonManager_Service _jsonMngr;
-        private Random _rnd;
-
-        public GeneralCommands(DatabaseContext db, Random rnd, CommandService cmdService, Config_Json cnfg, JsonManager_Service jsonM)
+        public GeneralCommands(EeveeEmbed eBuilder, CommandService cmdService, Config_Json config, JsonWrapper_Service jsonWrapper)
         {
-            _db = db;
-            _rnd = rnd;
+            _eBuilder = eBuilder;
             _cmdService = cmdService;
-            _config = cnfg;
-            _jsonMngr = jsonM;
-
-            _eFooter = new EmbedFooterBuilder()
-            {
-                IconUrl = Defined.BIG_BOSS_THUMBNAIL,
-                Text = Defined.FOOTER_MESSAGE
-            };
-
-            _eBuilder = new EmbedBuilder
-            {
-                Color = Defined.Colors[_rnd.Next(Defined.Colors.Length - 1)],
-                Footer = _eFooter
-            };
+            _config = config;
+            _jsonWrapper = jsonWrapper;
         }
 
         [Command("botinfo")]
@@ -78,7 +54,7 @@ namespace EeveeBot.Modules
                })
                .WithFooter(Defined.COPYRIGHTS_MESSAGE);
 
-            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+            await ReplyAsync(embed: _eBuilder.Build());
         }
 
         [Command("userinfo")]
@@ -98,7 +74,7 @@ namespace EeveeBot.Modules
                 .AddField("__Is Bot?__", u.IsBot.ToString(), true)
                 .WithThumbnailUrl(u.GetAvatarUrl());
 
-            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+            await ReplyAsync(embed: _eBuilder.Build());
         }
 
         [Command("guildinfo")]
@@ -118,7 +94,7 @@ namespace EeveeBot.Modules
                 .AddField("__Text Channels__", g.TextChannels.Count() > 0 ? string.Join(" | ", g.TextChannels.Select(x => x.Mention)) : "None", true)
                 .WithThumbnailUrl(g.IconUrl);
 
-            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+            await ReplyAsync(embed: _eBuilder.Build());
         }
         
         [Command("genbotinv")]
@@ -133,10 +109,11 @@ namespace EeveeBot.Modules
             }
             else
                 _eBuilder.WithTitle("Result");
+
             _eBuilder.WithDescription(res)
                 .WithUrl(res);
 
-            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+            await ReplyAsync(embed: _eBuilder.Build());
         }
 
         [Command("ud")]
@@ -145,50 +122,21 @@ namespace EeveeBot.Modules
         [Permission]
         public async Task UrbanDictionaryCommand(string input, int num = 1)
         {
-            Uri url = new Uri($"http://api.urbandictionary.com/v0/define?term={input}");
-            var data = await _jsonMngr.GetJsonObjectAsync<UrbanDictionary_Json.Output>(url);
+            Uri url = new Uri($"http://api.urbandictionary.com/v0/define?term={input.Replace(" ", "%20").ToLower()}");
+            var data = (await _jsonWrapper.GetJsonObjectAsync<UrbanDictionary_Json.Output>(url)).list;
 
-            try
+            _eBuilder.WithUrl(url.OriginalString);
+            for (int i = 0; i < data.Take(num).Count(); i++)
             {
-                _eBuilder.WithTitle(input)
-                    .WithUrl($"http://www.urbandictionary.com/define.php?term={input}");
-                for (int i = 0; i < data.list.Take(num).Count(); i++)
+                _eBuilder.WithTitle($"{input} - Definition #{(i + 1)}");
+
+                var definitionParts = $"{data[i].definition}\n\n**Examples:**\n{data[i].example}".SplitByLength(Defined.EMBED_DESCRIPTION_LIMIT, keepWords: true);
+                foreach(var defPart in definitionParts)
                 {
-                    _eBuilder.AddField(x =>
-                    {
-                        x.Name = $"__Definition #{(i + 1)}__";
-                        x.Value = data.list[i].definition;
-                        x.IsInline = false;
-
-                    })
-                    .AddField(x =>
-                    {
-                       x.Name = "__Examples__";
-                       x.Value = data.list[i].example;
-                       x.IsInline = false;
-                    });
+                    _eBuilder.WithDescription(defPart);
+                    await ReplyAsync(embed: _eBuilder.Build());
                 }
-
-                await ReplyAsync(embed: _eBuilder.Build());
             }
-            catch (Exception)
-            {
-                await ReplyAsync("Definition is too long for Embed text length!");
-            }
-        }
-
-        [Command("echo")]
-        [Alias("send", "say")]
-        [Summary("Sends the given Text to the specified Channel")]
-        [Permission]
-        public async Task SendText(SocketTextChannel channel, [Remainder] string text)
-        {
-            await channel.SendMessageAsync(text);
-        }
-        [Command("echo")]
-        public async Task SendText([Remainder] string text)
-        {
-            await ReplyAsync(text);
         }
         
         [Command("minecraftavatar")]
@@ -203,32 +151,8 @@ namespace EeveeBot.Modules
                 .WithImageUrl(url);
             
 
-            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+            await ReplyAsync(embed: _eBuilder.Build());
         }
-
-        [Command("date")]
-        [Alias("currdate")]
-        [Permission]
-        public async Task SendTimeInFuturistic()
-        {
-            _eBuilder.WithTitle("Current Date")
-                .AddField(x =>
-                {
-                    x.Name = "__General Format__";
-                    x.Value = DateTimeOffset.UtcNow.ToString("dd/MM/yyyy");
-                    x.IsInline = true;
-                })
-                .AddField(x =>
-                {
-                    x.Name = "__Futuristic Format__";
-                    x.Value = new string(DateTimeOffset.UtcNow.ToString("ddMMyyyy").ToCharArray().ByOrder(0, 2, 4, 5, 1, 3, 6, 7));
-                    x.IsInline = true;
-                })
-                .WithThumbnailUrl(Defined.DATE_THUMBNAIL);
-
-            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
-        }
-
 
         private async Task PrepareHelp(CommandInfo command)
         {
@@ -262,7 +186,7 @@ namespace EeveeBot.Modules
                     x.IsInline = false;
                 });
 
-            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+            await ReplyAsync(embed: _eBuilder.Build());
         }
         private async Task PrepareHelp(ModuleInfo module)
         {
@@ -289,7 +213,7 @@ namespace EeveeBot.Modules
                    x.IsInline = false;
                });
 
-            await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+            await ReplyAsync(embed: _eBuilder.Build());
         }
 
 
@@ -304,6 +228,7 @@ namespace EeveeBot.Modules
             {
                 _eBuilder.WithTitle("All Commands")
                     .WithDescription($"Use **{_config.Prefixes[0]}**help <module / command name> for help in a specific **Module** or **Command**");
+
                 foreach (var mod in _cmdService.Modules.OrderByDescending(x => x.Commands.Count))
                 {
                     _eBuilder.AddField(x =>
@@ -314,7 +239,7 @@ namespace EeveeBot.Modules
                     });
                 }
 
-                await ReplyAsync(string.Empty, embed: _eBuilder.Build());
+                await ReplyAsync(embed: _eBuilder.Build());
             }
             else
             {
@@ -323,10 +248,8 @@ namespace EeveeBot.Modules
                     .FirstOrDefault(x => x.Aliases.Select( y => y.ToLower()).Contains(arg));
 
                 if (module != null)
-                {
                     await PrepareHelp(module);
-                }
-                else if(module == null)
+                else
                 {
                     var command = _cmdService.Commands.FirstOrDefault(x => x.Aliases.Select(y => y.ToLower()).Contains(arg));
 
@@ -339,22 +262,5 @@ namespace EeveeBot.Modules
                 }
             }
         }
-
-        /* Wait till able to get bot owner
-        [Command("bots")]
-        [Summary("Sends a list of the bots in a specific guild.")]
-        public async Task SendBotsListCommand([Remainder] SocketGuild g = null)
-        {
-            g = g ?? Context.Guild;
-
-            _eBuilder.WithTitle($"{g.Name} Guild => Bot Users")
-                .WithThumbnailUrl(g.IconUrl);
-            Context.Client.CurrentUser.
-
-            foreach (var item in g.Users.Where( x => x.IsBot).Select(x => x as I)
-            {
-
-            }
-        }*/
     }
 }

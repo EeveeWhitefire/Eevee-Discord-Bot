@@ -1,16 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.ComponentModel.DataAnnotations;
 
 using EeveeBot.Interfaces;
-
-using LiteDB;
 
 namespace EeveeBot.Classes.Database
 {
     public class BlacklistUser : IUser
     {
-        [BsonId]
+        [Key]
+        [ConcurrencyCheck]
         public ulong Id { get; set; }
 
         public BlacklistUser() { }

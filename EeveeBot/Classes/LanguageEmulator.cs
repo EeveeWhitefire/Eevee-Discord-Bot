@@ -22,14 +22,14 @@ namespace EeveeBot.Classes
         private static Stopwatch _compilsw = new Stopwatch();
 
         public static async Task EvaluateAsync(EmbedBuilder eBuilder, Languages lng, string input, 
-            SocketCommandContext Context, DatabaseContext db, Config_Json cnfg)
+            SocketCommandContext Context, DatabaseRepository db, Config_Json config)
         {
             switch (lng)
             {
                 case Languages.CS:
                     try
                     {
-                        var globals = new EmulatorGlobalVariables { Context = Context, _config = cnfg, _db = db };
+                        var globals = new EmulatorGlobalVariables { Context = Context, _config = config, _db = db };
 
                         input = input.Replace("ReplyAsync", "Context.Channel.SendMessageAsync");
 
@@ -37,7 +37,7 @@ namespace EeveeBot.Classes
                             .Where(x => !x.IsDynamic && !string.IsNullOrWhiteSpace(x.Location)))
                             .WithImports("System", "System.Math", "Discord.Commands", "Discord.Net", "Discord.WebSocket",
                             "System.Diagnostics", "System.Threading.Tasks", "System.Reflection", "System.Net", "System.Net.Http", "System.Net.Http.Headers",
-                            "System.Text", "System.Collections.Generic", "System.Linq", "System.Text.RegularExpressions", "System.IO", "EeveeBot.Classes.Database");
+                            "System.Text", "System.Collections.Generic", "System.Linq", "System.Text.RegularExpressions", "System.IO", "EeveeBot.Classes.Database", "EeveeBot.Defined");
 
                         var script = (CSharpScript.Create(input, scriptOptions, globalsType: typeof(EmulatorGlobalVariables)));
                         _compilsw.Start();
@@ -45,14 +45,12 @@ namespace EeveeBot.Classes
                         script.Compile();
 
                         _compilsw.Stop();
-                        _compilsw.Reset();
 
                         _exesw.Start();
                         //counting execution time
                         var output = (await script.RunAsync(globals: globals)).ReturnValue.ToString();
 
                         _exesw.Stop();
-                        _exesw.Reset();
 
                         output = output ?? "No output";
 
@@ -75,6 +73,9 @@ namespace EeveeBot.Classes
                 default:
                     break;
             }
+
+            _compilsw.Reset();
+            _exesw.Reset();
         }
 
 
@@ -90,7 +91,7 @@ namespace EeveeBot.Classes
     {
         public SocketCommandContext Context { get; set; }
         public Config_Json _config { get; set; }
-        public DatabaseContext _db { get; set; }
+        public DatabaseRepository _db { get; set; }
     }
 
     public enum Languages
